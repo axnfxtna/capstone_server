@@ -1,0 +1,49 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  pi5_ip: "10.26.9.196"
+  pi5_port: 5000
+
+llm:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "qwen2.5:7b-instruct"
+  timeout: 30
+  temperature: 0.7
+  max_tokens: 512
+
+milvus:
+  host: "localhost"
+  port: 19530
+  memory_collection: "conversation_memory"   # new — session memory
+  # existing RAG collections (shared with final_docker_component)
+  curriculum_collection: "curriculum"
+  uni_info_collection: "uni_info"
+  time_table_collection: "time_table"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  embedding_dim: 384
+  top_k: 3
+
+tts:
+  mode: "pi5"                    # "server" = Option A (WAV) | "pi5" = Option B (text)
+  model_path: "./models/vits_thai.pth"
+  cache_dir: "./cache/tts"
+
+session:
+  greeting_cooldown_seconds: 300
+  session_timeout_seconds: 600
+  max_history_turns: 5
+
+thresholds:
+  detection_confidence: 0.75
+  stt_confidence: 0.6
+
+sqlite:
+  db_path: "./database/metadata.db"
+
+mysql:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "root"
+  database: "capstone"
