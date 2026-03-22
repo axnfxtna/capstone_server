@@ -1,17 +1,17 @@
 # Server Progress Log
 
 ## Project: KhanomTan AI Brain — Server Side
-**Stack:** FastAPI · Ollama (qwen2.5:7b-instruct) · Milvus · SQLite · Python 3.8.10
+**Stack:** FastAPI · Ollama (llama3.1-typhoon2-70b-instruct Q5_K_M + typhoon2-8b Q5_K_M) · Typhoon2-Audio sidecar · Milvus · SQLite · MySQL · Python 3.8.10 (main) + 3.10 (audio sidecar)
 
 ---
 
-## Current Status: Phase 2.6 Complete ✅
+## Current Status: Phase 2.9 Verified ✅ — Next: Embedding Model Upgrade (BAAI/bge-m3)
 
-The full server pipeline runs end-to-end with live PI 5 traffic.
-All 5 RAG routes work correctly with real data. Session timeout, grammar confidence
-gate, and server-side TTS infrastructure added in Phase 2 completion pass (2026-03-21).
-Output stages (TTS, ROS2) fire correctly but PI 5 receiver endpoints not yet confirmed
-by teammates.
+Phase 2.8 (all prompt fine-tuning) complete. Phase 2.9 (database verification) complete (2026-03-22).
+Dual-model LLM architecture live: 70B for chatbot/greeting, 8B for grammar/memory.
+Database pipeline verified: SQLite (244 turns), MySQL (4 students, 229 timetable rows), Milvus (6 collections healthy).
+`enrollment_year` bug fixed — student_year now correctly derived from MySQL column.
+Next: upgrade Milvus embedding model from `all-MiniLM-L6-v2` to `BAAI/bge-m3` (1024-dim, Thai-aware).
 
 ---
 
@@ -32,15 +32,18 @@ by teammates.
 - [x] `/greeting` — 200 OK, correct `GreetingPayload` schema (no stt, has `vision_confidence`)
 - [x] `/greeting` skips unregistered and Unknown persons
 - [x] `person_id` cleaned before use: `"Palm (Krittin Sakharin)"` → `"Palm"` via `_clean_name()`
+- [x] `thai_name` field added to both payloads — used as display name in LLM prompts when present (2026-03-22)
+- [x] `student_id` field added to both payloads — used for MySQL/Milvus lookup when present (2026-03-22)
+- [x] `stt.confidence` removed from `STTResult` — Typhoon ASR does not expose a real per-utterance score (2026-03-22)
 
 ### Processing Pipeline (per `/detection` event)
 - [x] Registered person filter (`is_registered` + `person_id != "Unknown"`)
-- [x] STT confidence gate (threshold: 0.6) — low-confidence speaks fallback TTS instead of silent skip
-- [x] Session management — per `person_id`, in-memory, UUID session ID
+- [x] STT confidence gate — **removed** (2026-03-22): Typhoon ASR has no real confidence score
+- [x] Session management — per `person_id`, in-memory, UUID session ID; year + student_db_id cached in session
 - [x] **Session timeout** — idle sessions expired after 600s; history dropped, logged (Phase 2.6)
 - [x] Grammar correction via LLM — uses chat API (not generate) to prevent prompt token leakage
 - [x] Grammar corrector length guard — falls back to raw if output < 50% of input length
-- [x] **Grammar high-confidence skip** — STT conf ≥ 0.85 bypasses LLM corrector entirely (Phase 2.5)
+- [x] **Grammar high-confidence skip** — **removed** (2026-03-22): confidence was always 0.80, skip never fired
 - [x] RAG chatbot (`llm_chatbot.py`) — builds context from Milvus + conversation history
 - [x] RAG routing: `chat_history` / `mysql_students` / `time_table` / `curriculum` / `uni_info`
 - [x] `time_table` keywords: `วันไหน`, `เวลาไหน`, `กี่โมง`, `คาบเรียน`, `วันเรียน`, `class`, `schedule`
@@ -54,6 +57,8 @@ by teammates.
 ### Language / Prompt
 - [x] All chatbot replies use `ค่ะ` (female particle), `ครับ` explicitly prohibited in all prompts
 - [x] `enforce_female_particle()` post-processor in `llm/typhoon_client.py` — replaces any ครับ → ค่ะ
+- [x] `enforce_female_particle()` also replaces male pronoun `ผม` → `ฉัน` and strips English sentences (Phase 2.7)
+- [x] `build_chatbot_system_prompt()` explicitly bans `ผม`, bans English sentences, calls student by first name only (Phase 2.7)
 - [x] Grammar corrector prompt: preserves polite particles, no truncation
 
 ### time_table Data — Re-ingested ✅
@@ -65,21 +70,123 @@ by teammates.
 - [x] Verified: "วิชา Programming เรียนวันไหน" → returns correct slots ✅
 
 ### Output (Server → PI 5)
-- [x] TTS Option B — POST to PI 5 `/tts_render` with `{ "phoneme_text": str }` (active mode)
+- [x] TTS Option A — POST WAV bytes to PI 5 `/audio_play` (server GPU synthesis, active mode)
 - [x] Navigation — POST to PI 5 `/navigation` with `{ "cmd": str, "destination"?: str }`
 - [x] `tts_mode` config switch in `settings.yaml` (`"pi5"` | `"server"`) propagated to all modules
-- [ ] TTS delivery confirmed end-to-end (depends on Teammate A)
+- [x] Push-based activation: server POSTs `{ "active": 1 }` to PI 5 `/set_active` after pipeline completes
+- [x] `config/settings.yaml` `pi5_port` corrected to `8766` (was 5000)
+- [x] TTS WAV delivery confirmed end-to-end — `audio_play 200 OK` in server logs ✅
 - [ ] ROS2 navigation confirmed end-to-end (depends on Teammate B)
+
+### Monitor Enhancements (Phase 2.7)
+- [x] `rag_collection` logged per detection event — visible in monitor as "RAG" row
+- [x] `phoneme_text` logged per detection event — visible in monitor as "TTS text" row
+- [x] Greeting endpoint now logs original Thai text (not phoneme-processed text)
+- [x] `llm_chatbot.ask()` returns `rag_collection` in response dict
+- [x] `greeting_bot.greet()` returns `(greeting_text, tts_text)` tuple
+
+### PI 5 Race Condition Fix (Phase 2.7)
+- [x] `raspi_main.py` `_send_event()`: `_set_inactive()` moved to BEFORE `run_in_executor` — eliminates race where server's `/set_active` push arrived during HTTP call and was overwritten
+- [x] `raspi_main.py` `_set_inactive()`: `asyncio.get_event_loop()` → `asyncio.get_running_loop()` (Python 3.11 deprecation fix)
+- [x] Fixed file sent to PI 5 operator
 
 ### TTS — Server-Side Infrastructure (Phase 2.3)
 - [x] `tts/khanomtan_engine.py` created — synthesizes WAV via pythaitts, POSTs to PI 5 `/audio_play`
 - [x] `IntentRouter` and `GreetingBot` dispatch on `tts_mode` (`"server"` → GPU WAV, `"pi5"` → text)
 - [x] `pythainlp 3.1.1` installed; Thai syllabification working in `mcp/tts_router.py`
-- [ ] `coqui-tts` (`pip install coqui-tts`) not yet installed — `TTS_AVAILABLE=False`, server mode blocked
-      → Once installed: change `tts.mode: "server"` in `settings.yaml` to activate
-- [ ] `walle-tts` Docker container (VachanaTTS on port 5002) — defined but not running
-      → Start with: `sudo docker-compose --profile interactive up walle-tts`
-      → Note: container uses VachanaTTS, not KhanomTan — endpoint is `POST /speak {"text": "..."}`
+- [x] `pythaitts TTS` (Coqui-TTS) — install: `pip install pythaitts TTS` — `tts.mode` switched to `"server"` (2026-03-21)
+- [x] `khanomtan_engine.py` aligned with docker `TTSPipeline`: `_clean_text()` preprocessing, result-path edge-case handling, file-existence guard (2026-03-21)
+- [ ] `walle-tts` Docker container (VachanaTTS on port 5002) — defined but not running (superseded; server-mode active)
+      → `sudo docker-compose --profile interactive up walle-tts` if fallback needed
+
+### LLM Model Upgrade (2026-03-22)
+- [x] LLM upgraded from `qwen2.5:7b-instruct` → `llama3.1-typhoon2-70b-instruct` (Q5_K_M GGUF via HuggingFace)
+- [x] Loaded via Ollama: `ollama pull hf.co/mradermacher/llama3.1-typhoon2-70b-instruct-GGUF:Q5_K_M`
+- [x] Runs on 4× A100-SXM4-80GB (320 GB VRAM total); Q5_K_M GGUF is ~46 GB
+- [x] `config/settings.yaml` `llm.model` updated accordingly
+
+### Typhoon2-Audio Sidecar — Phase A TTS (2026-03-22)
+- [x] `audio_service/` created — separate Python 3.10 FastAPI service on port 8001
+- [x] Uses pyenv Python 3.10.14 venv (`audio_service/venv310/`)
+- [x] `audio_service/typhoon_audio.py` — loads `typhoon-ai/llama3.1-typhoon2-audio-8b-instruct`, exposes `synthesize()` and `transcribe()`
+- [x] `audio_service/main.py` — FastAPI sidecar; `POST /tts` → WAV bytes, `POST /stt` → `{"text": str}`, `GET /health`
+- [x] `audio_service/requirements.txt` — `transformers==4.45.2`, `fairseq==0.12.2`, flash-attn commented out (GLIBC_2.32 incompatible with Ubuntu 20.04)
+- [x] `audio_service/start.sh` — activates venv310 and starts uvicorn on port 8001
+- [x] GLIBC fix: `attn_implementation="eager"` in `AutoModel.from_pretrained()`
+- [x] Cached model patch 1: `flash_attention_2` → `eager` in `modeling_typhoon2audio.py`
+- [x] Cached model patch 2: `attention_mask=None` in `predict()` (2D mask incompatible with transformers 4.45.2 LlamaAttention)
+- [x] `synthesize_speech()` returns `{"array": float32_ndarray, "sampling_rate": 16000}` — fixed extraction in `typhoon_audio.py`
+- [x] `tts/typhoon_audio_tts.py` added — `synthesize_and_send()` and `transcribe()` helpers for main server
+- [x] `tts_engine: "typhoon_audio"` in `settings.yaml`; `GreetingBot` and `IntentRouter` dispatch to sidecar
+- [x] TTS confirmed end-to-end: valid 16-bit PCM WAV at 16000 Hz, 200 OK ✅
+
+### Typhoon2-Audio Sidecar — Phase B STT (2026-03-22)
+- [x] `POST /stt` endpoint on sidecar — accepts raw WAV bytes, returns `{"text": str}`
+- [x] `typhoon_audio.transcribe()` — writes WAV to temp file, calls `model.generate()` with audio conversation
+- [x] `tts/typhoon_audio_tts.py` `transcribe()` — async helper: POSTs WAV to sidecar, returns text
+- [x] `POST /audio_detection` added to main server `api/routes/receiver.py`
+  - Accepts multipart/form-data: `audio` (WAV UploadFile) + person metadata fields
+  - Calls sidecar STT → builds DetectionPayload → delegates to `on_detection()` pipeline
+  - Same grammar → RAG → intent routing flow as `/detection`
+- [x] `config/settings.yaml` `audio_service.stt_enabled` — STT sidecar available
+
+### Memory Summary & TTS Router (Phase 2.8.4 + TTS bypass, 2026-03-22)
+- [x] `_SUMMARY_PROMPT` updated — entity preservation rule added (building names, subjects, project topics must not be dropped); outcome-focused structure for better Milvus retrieval relevance
+- [x] `to_tts_ready()` bypassed for `tts_engine == "typhoon_audio"` — Typhoon2-Audio reads raw Thai natively; syllabification only applied for khanomtan/pi5 paths
+- [x] Bypass applied in both `intent_router.route()` and `greeting_bot._send_tts()`
+
+### Dual-Model LLM Architecture (2026-03-22)
+- [x] Pulled `hf.co/mradermacher/llama3.1-typhoon2-8b-instruct-GGUF:Q5_K_M` via Ollama (5.7 GB)
+- [x] `config/settings.yaml` — added `llm_fast` block (8B, timeout 15s, temperature 0.3)
+- [x] `api/main.py` — two `TyphoonClient` instances: `llm` (70B) and `llm_fast` (8B)
+- [x] `GrammarCorrector` and `MemoryManager` now use `llm_fast` (8B) — faster simple tasks
+- [x] `LLMChatbot` and `GreetingBot` keep `llm` (70B) — best quality for conversation
+- [x] Falls back to `llm` config if `llm_fast` missing (safe graceful degradation)
+- [x] Both model names logged at server startup
+
+### Database Verification (Phase 2.9, 2026-03-22)
+- [x] **SQLite** — `conversation_log` 244 turns, `sessions` table healthy, all indexes present
+- [x] **MySQL** — `Students` 4 rows, `Academic_Year` 4 rows, `ExcelTimetableData` 229 rows, `ChatHistory` 301 rows, `Face_Recognition_Data` empty (PI 5 side)
+- [x] **Milvus** — 6 collections healthy:
+  - `curriculum` 516 entities, `time_table` 229 entities, `uni_info` 7 entities
+  - `conversation_memory` 244 entities, `chat_history` 240 entities, `student_face_images` 0
+- [x] Memory search verified: `student_id="65011356"` returns 75 correctly-keyed entries (score ≥ 0.80)
+- [x] Old Milvus entries (168) use `"Palm (Krittin Sakharin)"` format — silently skipped by filter, new writes correct
+- [x] **`enrollment_year` bug fixed** — `Students` table uses `enrollment_year` (e.g. 2022), not `year`; both `/greeting` and `/detection` handlers now compute `student_year = min(current_year - enrollment_year + 1, 1→4)`
+- [x] Verified: Palm (enrolled 2022, current 2026) → `student_year=4` → correct "ว่าที่บัณฑิต" tone in greeting
+
+### Prompt Fine-tuning (Phase 2.8.2–2.8.5, 2026-03-22)
+- [x] **RAG routing fixed** — `_last_route` shared-state bug removed; default fallback changed from `uni_info` → `chat_history`; casual/greeting/identity keywords added to `chat_history` route
+- [x] **Display name fix** — `_clean_name()` now applied to `thai_name` too; "ปาล์ม (กฤติน สาครินทร์)" → "ปาล์ม" everywhere
+- [x] **`llm_chatbot` system prompt rewritten** — capabilities-first structure, scope limited to university Q&A + navigation in E-12 Building only, 2-sentence cap for TTS, out-of-scope denial rule
+- [x] **Intent descriptions added** — moved above JSON schema as a clear 4-way decision guide (chat / info / navigate / farewell)
+- [x] **`confidence` field removed** from chatbot JSON output — never used downstream
+- [x] **`grammar_corrector` reframed** as STT Text Normalizer; preserve-style rules replace negative constraints; few-shot examples added; skip LLM for inputs < 15 chars
+- [x] **Navigation confirmation LLM call dropped** — `intent_router` now uses fixed template `"ได้เลยค่ะ ตามหนูมาเลยนะค่ะ หนูจะพาไปที่ {destination} ค่ะ"` (saves one LLM call per navigate)
+- [x] **Greeting prompt rewritten** — time-of-day injection (เช้า/เที่ยง/บ่าย/เย็น/กลางคืน); memory contextual sensitivity (broad tone, no technical details); no double questions rule; year tones sharpened per tier
+- [x] **Pipeline timing instrumentation** added to `/detection` — grammar / llm / tts / total ms logged and visible in monitor as colour-coded bar
+
+### Greeting Personalisation & Payload Schema Update (Phase 2.8.1, 2026-03-22)
+- [x] `_GREETING_PROMPT` rewritten — year-tone in Thai (4 tiers), memory injection, removed `ros2_cmd` field
+- [x] `_YEAR_TONE` map: ปี 1 = ให้กำลังใจ/อบอุ่น, ปี 2 = โปรเจกต์, ปี 3 = ฝึกงาน, ปี 4 = โปรเจกต์จบ
+- [x] `GreetingBot.greet()` fetches Milvus memory at greeting time; injects as "ประวัติการสนทนาล่าสุด"
+- [x] `GreetingBot.__init__` accepts `memory_manager`; `main.py` injects it at startup
+- [x] `fetch_student_by_nickname()` and `fetch_student_by_id()` added to `database/mysql_client.py`
+- [x] `/greeting` resolves year + student_id from MySQL (prefers `payload.student_id` if present)
+- [x] `/detection` caches `student_year` + `student_db_id` in session on first event (no repeated MySQL calls)
+- [x] `thai_name` + `student_id` added to `DetectionPayload` and `GreetingPayload` schemas
+- [x] `stt.confidence` removed from `STTResult` schema — not a real value from Typhoon ASR
+- [x] STT confidence gate removed from `/detection` handler
+- [x] Grammar high-confidence skip removed from `GrammarCorrector.correct()` (never fired: 0.80 < 0.85)
+- [x] `display_name` uses `payload.thai_name` when provided, falls back to `_clean_name(person_id)`
+- [x] Greeting temperature raised 0.5 → 0.7 for variety
+
+### TTS Pre-processor Rewrite (Phase 2.7)
+- [x] Old `mcp/tts_router.py` phoneme rules caused character corruption: คุณ→คุน, อะไร→อะไน, ต้องการ→ต้องกาน, เลย→เย, สามารถ→สามาด etc.
+- [x] Compared old vs new on 10 test cases — old approach corrupted 6/7 phrases; new produces clean output
+- [x] Replaced with syllabify-only approach: `word_tokenize` + `thai_syllables` — inserts spaces, never changes characters
+- [x] KhanomTan TTS v1.0 reads standard Thai natively; character substitution not needed
+- [x] Result: อะไร → อะ ไร  |  คุณ → คุณ  |  ต้องการ → ต้อง การ  (spaces only, no corruption)
 
 ---
 
@@ -89,26 +196,42 @@ by teammates.
 |-------|----------|--------|
 | Grammar corrector still occasionally over-corrects informal Thai | Medium | Mitigated: length guard + prompt rules + high-conf skip (≥0.85) |
 | Session state lost on server restart (in-memory only) | Low | Phase 3 item (Redis) |
-| `time_table` search scores moderate (~0.28-0.33) — English embedder on Thai text | Low | Acceptable; multilingual embedder would improve |
-| `coqui-tts` not installed — server-side KhanomTan synthesis disabled | Low | `pip install coqui-tts` then set `tts.mode: "server"` |
+| `time_table` search scores moderate (~0.28-0.33) — English embedder on Thai text | Low | Planned fix: upgrade to BAAI/bge-m3 (next move) |
+| TTS venv dependency pins (numba/numpy/protobuf conflicts) | Resolved | numba upgraded to 0.58.1; numpy pinned to 1.24.4; protobuf 5.29.6 |
 | `walle-tts` container (VachanaTTS) not running | Low | `sudo docker-compose --profile interactive up walle-tts` |
+| STT confidence field removed | Resolved (2026-03-22) | Typhoon ASR has no real per-utterance beam score; `stt.confidence` removed from payload schema; gate and grammar skip removed |
+| PI 5 60-second INACTIVE timeout | Resolved (Phase 2.7) | Race condition in `_send_event()` — `_set_inactive()` now called BEFORE `run_in_executor` |
 
 ---
 
 ## TTS Architecture
 
 ```
-tts.mode = "pi5"  (current / default)
-  └─ text_sender.py → POST PI5:5000/tts_render { phoneme_text }
-     PI 5 does TTS locally on ARM CPU
+tts.engine = "typhoon_audio"  (current / active ✅)
+  └─ GreetingBot / IntentRouter → tts/typhoon_audio_tts.synthesize_and_send()
+     → POST audio_service:8001/tts { text }
+     → Typhoon2-Audio-8B synthesizes WAV (16-bit PCM, 16000 Hz)
+     → POST PI5:8766/audio_play <wav bytes>
 
-tts.mode = "server"  (blocked: needs coqui-tts)
+tts.engine = "khanomtan"  (fallback)
   └─ khanomtan_engine.py → pythaitts TTS(pretrained="khanomtan") on GPU
-     → kanom_than_player.py → POST PI5:5000/audio_play <wav bytes>
+     → POST PI5:8766/audio_play <wav bytes>
 
-walle-tts container  (not running, alternative path)
-  └─ VachanaTTS on localhost:5002 → POST /speak { text } → returns WAV path
-     Note: uses VachanaTTS, not KhanomTan — different model
+tts.mode = "pi5"  (PI 5-side TTS)
+  └─ POST PI5:8766/tts_render { phoneme_text }
+     PI 5 does TTS locally on ARM CPU
+```
+
+## STT Architecture
+
+```
+Option A — PI 5 STT (original)
+  PI 5 Typhoon ASR → { "stt": { "text": str } } → POST server:8000/detection
+
+Option B — Server STT via Typhoon2-Audio (new ✅)
+  PI 5 → multipart WAV + metadata → POST server:8000/audio_detection
+  → audio_service:8001/stt → Typhoon2-Audio-8B transcribes
+  → same grammar → RAG → intent pipeline as /detection
 ```
 
 ---
@@ -119,9 +242,10 @@ walle-tts container  (not running, alternative path)
 |-----------|------|--------|---------|
 | `milvus` | 19530 | ✅ Running | Vector DB |
 | `mysql` | 3306 | ✅ Running | Relational DB (Students, timetable) |
-| `ollama` | 11434 | ✅ Running | LLM (qwen2.5:7b-instruct) |
+| `ollama` | 11434 | ✅ Running | LLM (llama3.1-typhoon2-70b-instruct Q5_K_M GGUF) |
 | `etcd` | 2379 | ✅ Running | Milvus dependency |
 | `minio` | 9002/9003 | ✅ Running | Milvus object storage |
+| `audio_service` | 8001 | ✅ Running | Typhoon2-Audio sidecar (TTS + STT) — Python 3.10 venv |
 | `walle-tts` | 5002 | ⬜ Not running | VachanaTTS — `--profile interactive` |
 | `walle-thaireader` | — | ⬜ Not running | Thai phoneme post-processor — `--profile interactive` |
 | `walle-stt` | — | ⬜ Not running | Speech-to-text — `--profile interactive` |
@@ -136,7 +260,7 @@ walle-tts container  (not running, alternative path)
 | `curriculum` | 516 | ✅ RAG working |
 | `time_table` | 128 | ✅ Re-ingested with structured Thai sentences |
 | `uni_info` | 7 | ✅ RAG working |
-| `conversation_memory` | 11+ | ✅ Stores/retrieves session summaries |
+| `conversation_memory` | 244 | ✅ Stores/retrieves session summaries; 75 entries with correct student_id |
 | `student_face_images` | 0 | N/A (PI 5 side) |
 
 ---
@@ -172,10 +296,10 @@ walle-tts container  (not running, alternative path)
 |------|--------|
 | Server IP | `10.100.16.22` |
 | PI 5 IP | `10.26.9.196` |
-| LLM | `qwen2.5:7b-instruct` via Ollama at `localhost:11434` |
-| Embedding | `sentence-transformers/all-MiniLM-L6-v2` (dim 384) |
+| LLM | `llama3.1-typhoon2-70b-instruct` (Q5_K_M GGUF) via Ollama at `localhost:11434` |
+| Embedding | `sentence-transformers/all-MiniLM-L6-v2` (dim 384) — upgrading to `BAAI/bge-m3` (1024) |
 | Milvus | `localhost:19530` (Docker, run by root) |
-| Python | 3.8.10 (venv at `./venv`) |
+| Python | 3.8.10 (main server venv `./venv`) · 3.10.14 (audio sidecar `audio_service/venv310/`) |
 | Monitor | `http://10.100.16.22:8000/monitor` or SSH tunnel `http://localhost:8080/monitor` |
 
 ---
@@ -185,11 +309,19 @@ walle-tts container  (not running, alternative path)
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Core pipeline (FastAPI, RAG, Milvus, sessions, TTS/ROS2 fire) | ✅ Done |
-| 2.3 | Server-side TTS infrastructure (khanomtan_engine, tts_mode switch) | ✅ Infrastructure done; blocked on coqui-tts install |
+| 2.3 | Server-side TTS infrastructure (khanomtan_engine, tts_mode switch) | ✅ Done |
 | 2.5 | Grammar high-confidence skip (STT conf ≥ 0.85 bypasses LLM) | ✅ Done |
 | 2.6 | Session timeout & cleanup (600s idle expiry) | ✅ Done |
+| 2.7 | PI 5 race condition fix, LLM persona, TTS pre-processor rewrite, monitor MCP visibility | ✅ Done |
+| LLM upgrade | qwen2.5:7b → llama3.1-typhoon2-70b-instruct (Q5_K_M, 4× A100) | ✅ Done |
+| Phase A TTS | Typhoon2-Audio sidecar TTS replacing khanomtan — WAV at 16kHz, confirmed end-to-end | ✅ Done |
+| Phase B STT | Typhoon2-Audio sidecar STT — `/audio_detection` endpoint on main server | ✅ Done |
+| 2.8.1 | Greeting personalisation — year-tone + memory recall + thai_name/student_id payload | ✅ Done |
+| 2.8.2–5 | Prompt fine-tuning — grammar, chatbot, greeting, intent router | ✅ Done |
+| Dual-LLM | Typhoon2-8B for grammar + memory; 70B for chatbot + greeting | ✅ Done |
+| 2.9 | Database verification — SQLite / MySQL / Milvus all confirmed healthy; enrollment_year bug fixed | ✅ Done |
+| Embed upgrade | Swap embedding from all-MiniLM-L6-v2 → BAAI/bge-m3 (1024-dim, Thai-aware) | 🔜 Next |
 | 3 | Session persistence across restarts (Redis) | ⬜ Not started |
-| 3 | Multilingual embedding model (Thai-aware) | ⬜ Not started |
 | 4 | Performance benchmarking & technical report | ⬜ Not started |
 
 ---

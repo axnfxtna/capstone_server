@@ -2,15 +2,23 @@ server:
   host: "0.0.0.0"
   port: 8000
   pi5_ip: "10.26.9.196"
-  pi5_port: 5000
+  pi5_port: 8766
 
 llm:
   provider: "ollama"
   base_url: "http://localhost:11434"
-  model: "qwen2.5:7b-instruct"
+  model: "hf.co/mradermacher/llama3.1-typhoon2-70b-instruct-GGUF:Q5_K_M"
   timeout: 30
   temperature: 0.7
   max_tokens: 512
+
+llm_fast:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "hf.co/mradermacher/llama3.1-typhoon2-8b-instruct-GGUF:Q5_K_M"
+  timeout: 15
+  temperature: 0.3
+  max_tokens: 256
 
 milvus:
   host: "localhost"
@@ -20,14 +28,20 @@ milvus:
   curriculum_collection: "curriculum"
   uni_info_collection: "uni_info"
   time_table_collection: "time_table"
-  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
   embedding_dim: 384
   top_k: 3
 
 tts:
-  mode: "pi5"                    # "server" = Option A (WAV) | "pi5" = Option B (text)
-  model_path: "./models/vits_thai.pth"
-  cache_dir: "./cache/tts"
+  mode: "server"                 # "server" = WAV → PI 5 | "pi5" = phoneme text → PI 5
+  engine: "typhoon_audio"        # "typhoon_audio" = sidecar | "khanomtan" = local pythaitts
+  speaker: "Tsyncone"            # KhanomTan v1.0 speaker (used only when engine=khanomtan)
+  language: "th-th"
+
+audio_service:
+  base_url: "http://localhost:8001"   # Typhoon2-Audio sidecar (Python 3.10)
+  stt_enabled: false                  # true = PI 5 sends WAV to /audio_detection (Phase B)
+  timeout: 15.0
 
 session:
   greeting_cooldown_seconds: 300

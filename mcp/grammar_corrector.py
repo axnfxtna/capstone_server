@@ -10,15 +10,29 @@ from llm.typhoon_client import TyphoonClient
 
 logger = logging.getLogger(__name__)
 
+# Skip LLM correction for very short inputs — low chance of meaningful STT errors,
+# high chance of over-correction (added particles, changed tone)
+_MIN_CHARS = 15
+
 _SYSTEM = (
-    "คุณคือผู้ช่วยแก้ไขคำพูดภาษาไทยที่ถอดเสียงมาจากระบบ STT\n"
-    "หน้าที่: แก้ไขการสะกดผิดและคำที่ฟังไม่ชัด ให้เป็นประโยคภาษาไทยที่ถูกต้อง\n"
-    "กฎ:\n"
-    "- ตอบกลับเฉพาะข้อความที่แก้ไขแล้วเท่านั้น ห้ามอธิบายเพิ่มเติม\n"
-    "- ถ้าข้อความถูกต้องอยู่แล้ว ให้ตอบกลับข้อความเดิมโดยไม่เปลี่ยนแปลง\n"
-    "- ห้ามเปลี่ยนความหมายหรือเพิ่มคำที่ไม่มีในต้นฉบับ\n"
-    "- ห้ามเปลี่ยนคำลงท้าย เช่น ครับ ค่ะ นะ ให้คงไว้ตามต้นฉบับ\n"
-    "- ห้ามตัดทอนประโยคให้สั้นลง ให้คงความยาวและความหมายเดิม"
+    "คุณคือ STT Text Normalizer สำหรับระบบหุ่นยนต์ภาษาไทย\n"
+    "หน้าที่ของคุณคือทำความสะอาดข้อความที่ถอดเสียงมาจาก STT เท่านั้น\n"
+    "ไม่ใช่นักเขียน ไม่ใช่ผู้แก้ไขภาษา — แค่แก้คำที่ STT ฟังผิดหรือสะกดผิด\n\n"
+    "กฎสำคัญ:\n"
+    "- รักษารูปแบบและโทนของต้นฉบับ 100% (ภาษาพูดให้คงเป็นภาษาพูด)\n"
+    "- ถ้าต้นฉบับไม่มีคำลงท้าย (ครับ/ค่ะ/นะ) ห้ามเติม\n"
+    "- ถ้าต้นฉบับมีคำลงท้าย ให้คงไว้ตามเดิม ห้ามเปลี่ยน\n"
+    "- ห้ามเปลี่ยนความหมาย เพิ่มคำ หรือตัดทอนประโยค\n"
+    "- ตอบกลับเฉพาะข้อความที่แก้ไขแล้วเท่านั้น ห้ามอธิบาย\n\n"
+    "ตัวอย่าง:\n"
+    "Input:  ไปไหนมา\n"
+    "Output: ไปไหนมา\n\n"
+    "Input:  ขอบคุณครับ\n"
+    "Output: ขอบคุณครับ\n\n"
+    "Input:  วันนี้มีวิชาอาไรบ้าง\n"
+    "Output: วันนี้มีวิชาอะไรบ้าง\n\n"
+    "Input:  เราพบกันล่าสุดเมือไหร่นะ\n"
+    "Output: เราพบกันล่าสุดเมื่อไหร่นะ"
 )
 
 
@@ -26,16 +40,15 @@ class GrammarCorrector:
     def __init__(self, llm: TyphoonClient):
         self.llm = llm
 
-    def correct(self, raw_text: str, confidence: float = 0.0) -> str:
+    def correct(self, raw_text: str) -> str:
         """
         Return grammar-corrected Thai text using chat API.
         Falls back to raw_text if LLM fails or returns empty.
-        Skips LLM call if STT confidence >= 0.85 (clean input, no over-correction risk).
         """
         if not raw_text or not raw_text.strip():
             return raw_text
-        if confidence >= 0.85:
-            logger.debug("Grammar skip: STT confidence=%.2f is high, passing through", confidence)
+        if len(raw_text.strip()) < _MIN_CHARS:
+            logger.debug("GrammarCorrector: short input (%d chars), skipping LLM", len(raw_text.strip()))
             return raw_text
         try:
             corrected = self.llm.chat(

@@ -1,0 +1,31 @@
+# PI 5 Service Configuration
+# ===========================
+# Drop this file into the PI 5 service directory and load with:
+#   import yaml
+#   with open("pi5.yaml") as f:
+#       cfg = yaml.safe_load(f)
+
+service:
+  host: "0.0.0.0"
+  port: 8766
+
+server:
+  ip: "10.100.16.22"
+  port: 8000
+
+audio:
+  # WAV format received from server (KhanomTan TTS output)
+  sample_rate: 16000
+  channels: 1
+  bit_depth: 16
+  # Backend: "sounddevice" (queued, no overlap) | "aplay" (simple subprocess)
+  backend: "sounddevice"
+  # Max utterances to queue before dropping (prevents unbounded memory growth)
+  max_queue_depth: 5
+
+activation:
+  # How PI 5 learns activation state from server
+  # "push"  = server calls POST /set_active on PI 5  (recommended)
+  # "poll"  = PI 5 polls GET /activate on server     (legacy fallback)
+  mode: "push"
+  poll_interval_seconds: 1.0    # only used when mode = "poll"

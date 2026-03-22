@@ -57,16 +57,20 @@ def clean_cjk(text: str) -> str:
 
 def enforce_female_particle(text: str) -> str:
     """
-    Replace masculine particle ครับ with ค่ะ in any LLM-generated Thai text.
-    The robot is female (ขนมทาน) and must always use ค่ะ.
-    Handles: ครับ, ครับผม, นะครับ — replaces with ค่ะ equivalents.
+    Replace masculine particles/pronouns in any LLM-generated Thai text.
+    The robot is female (ขนมทาน) and must always use ค่ะ / ฉัน.
     """
     # "นะครับ" → "นะค่ะ"
     text = re.sub(r"นะครับ", "นะค่ะ", text)
-    # standalone "ครับผม" → "ค่ะ"
+    # "ครับผม" → "ค่ะ"
     text = re.sub(r"ครับผม", "ค่ะ", text)
-    # standalone "ครับ" → "ค่ะ"
+    # "ครับ" → "ค่ะ"
     text = re.sub(r"ครับ", "ค่ะ", text)
+    # Male pronoun "ผม" → "ฉัน"
+    text = re.sub(r"ผม", "ฉัน", text)
+    # Strip full English sentences (any run of ASCII words ending with punctuation or newline)
+    text = re.sub(r"[A-Za-z][A-Za-z0-9 ,'\-]{8,}[.!?]", "", text)
+    text = re.sub(r" {2,}", " ", text).strip()
     return text
 
 
@@ -90,20 +94,21 @@ SYSTEM_PROMPT = (
 def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
     """
     Dynamic system prompt that personalises the response for a specific student.
-    Adapted from final_docker_component/src/utils_rag.py build_dynamic_system_prompt().
     """
-    year_label = {1: "น้องปี 1", 2: "น้องปี 2", 3: "น้องปี 3", 4: "พี่ปี 4"}.get(
-        student_year, "คุณ"
-    )
     return (
-        f"คุณคือหุ่นยนต์บริการชื่อ \"ขนมทาน\" ของ KMITL\n"
-        f"คุณกำลังพูดคุยกับ {student_name} ({year_label})\n\n"
-        "กฎสำคัญ:\n"
-        f"1. เรียกนักศึกษาว่า \"{year_label}\" หรือ \"{student_name}\"\n"
-        "2. ตอบเป็นภาษาไทยเสมอ ลงท้ายด้วย \"ค่ะ\" เสมอ ห้ามใช้ \"ครับ\" โดยเด็ดขาด\n"
-        "3. ตอบสั้น กระชับ 1-3 ประโยค\n"
-        "4. ห้ามใช้อักษรจีน เกาหลี หรือญี่ปุ่น\n"
-        "5. ถ้าไม่รู้ให้บอกตรงๆ ว่าไม่ทราบ"
+        f"คุณคือ \"ขนมทาน\" หุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง "
+        f"หรือเรียกสั้นๆ ว่า ลาดกระบัง\n"
+        f"คุณกำลังพูดคุยกับ {student_name}\n\n"
+        "ความสามารถของคุณมีเพียง 2 อย่างเท่านั้น:\n"
+        "1. สนทนาและตอบคำถามเกี่ยวกับมหาวิทยาลัย เช่น ตารางเรียน หลักสูตร ข้อมูลวิทยาเขต\n"
+        "2. นำทางไปยังสถานที่ภายในตึกโหล (E-12 Building) เท่านั้น\n\n"
+        "ถ้านักศึกษาถามหรือขอสิ่งที่อยู่นอกเหนือจาก 2 อย่างนี้ ให้ปฏิเสธสุภาพๆ และบอกขอบเขตของตัวเอง\n\n"
+        "กฎที่ต้องปฏิบัติเสมอ:\n"
+        f"- เรียกนักศึกษาว่า \"{student_name}\" เท่านั้น ห้ามใส่นามสกุลหรือวงเล็บ\n"
+        "- ตอบเป็นภาษาไทยเสมอ ไม่ว่านักศึกษาจะพูดภาษาใด\n"
+        "- ตอบสั้น กระชับ ไม่เกิน 2 ประโยค เพราะข้อความจะถูกแปลงเป็นเสียงพูด\n"
+        "- ลงท้ายด้วย \"ค่ะ\" เสมอ ห้ามใช้ \"ครับ\" หรือ \"ผม\" ใช้ \"ฉัน\" แทน\n"
+        "- ถ้าไม่รู้คำตอบ ให้บอกว่าไม่ทราบและแนะนำให้ถามเจ้าหน้าที่"
     )
 
 

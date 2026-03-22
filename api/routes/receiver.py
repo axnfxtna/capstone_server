@@ -24,14 +24,17 @@ Both /detection and /greeting receive the same DetectionPayload:
 """
 
 import logging
+import time
 import uuid
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import APIRouter, Request
+import httpx
+from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from api.routes.monitor import log_event
-from api.schemas.receiver import ActivateResponse, DetectionPayload, GreetingPayload
+from api.schemas.receiver import ActivateResponse, DetectionPayload, GreetingPayload, STTResult
+from database.mysql_client import fetch_student_by_id, fetch_student_by_nickname
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,6 +46,16 @@ router = APIRouter()
 _active: int = 0
 _last_greeting: Dict[str, datetime] = {}     # person_id → last greeted at
 _sessions: Dict[str, dict] = {}             # person_id → session state
+
+
+async def _push_active(state: int, pi5_base_url: str) -> None:
+    """Push activation state to PI 5 /set_active (fire-and-forget)."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(f"{pi5_base_url}/set_active", json={"active": state})
+        logger.debug("Pushed active=%d to PI 5", state)
+    except Exception as exc:
+        logger.warning("_push_active failed: %s", exc)
 
 
 def _clean_name(person_id: str) -> str:
@@ -107,40 +120,84 @@ async def on_greeting(payload: GreetingPayload, request: Request):
 
     _last_greeting[payload.person_id] = datetime.utcnow()
     _active = 1
+    # No activation push here — PI 5 is still active when greeting fires.
+    # It only goes inactive after posting /detection (which comes later).
 
-    phoneme_text = await app_state.greeting_bot.greet(_clean_name(payload.person_id))
-    logger.info("Greeted %s: %r", payload.person_id, phoneme_text[:60])
+    # Resolve display name — prefer Thai name from PI 5, fall back to cleaned person_id
+    # Apply _clean_name() to thai_name too in case PI 5 sends "ปาล์ม (กฤติน สาครินทร์)"
+    clean_name = _clean_name(payload.thai_name) if payload.thai_name else _clean_name(payload.person_id)
+    # Resolve student_id + year from MySQL (PI 5 may send student_id directly)
+    mysql_cfg = app_state.settings.get("mysql", {})
+    if payload.student_id:
+        student_row = fetch_student_by_id(
+            student_id=payload.student_id,
+            host=mysql_cfg.get("host", "localhost"),
+            port=int(mysql_cfg.get("port", 3306)),
+            user=mysql_cfg.get("user", "root"),
+            password=mysql_cfg.get("password", "root"),
+            database=mysql_cfg.get("database", "capstone"),
+        )
+        student_id = payload.student_id
+    else:
+        student_row = fetch_student_by_nickname(
+            nick_name=_clean_name(payload.person_id),
+            host=mysql_cfg.get("host", "localhost"),
+            port=int(mysql_cfg.get("port", 3306)),
+            user=mysql_cfg.get("user", "root"),
+            password=mysql_cfg.get("password", "root"),
+            database=mysql_cfg.get("database", "capstone"),
+        )
+        student_id = str(student_row.get("student_id", payload.person_id)) if student_row else payload.person_id
+    if student_row:
+        enroll = int(student_row.get("enrollment_year", datetime.utcnow().year))
+        student_year = min(max(datetime.utcnow().year - enroll + 1, 1), 4)
+    else:
+        student_year = 1
+
+    greeting_text, tts_text = await app_state.greeting_bot.greet(
+        student_name=clean_name,
+        student_id=student_id,
+        student_year=student_year,
+    )
+    logger.info("Greeted %s (year=%d): %r", payload.person_id, student_year, greeting_text[:60])
 
     log_event({
         "endpoint": "/greeting",
         "person_id": payload.person_id,
+        "display_name": clean_name,
+        "student_year": student_year,
         "is_registered": payload.is_registered,
-        "stt_confidence": payload.vision_confidence,
-        "reply_text": phoneme_text,
+        "vision_confidence": payload.vision_confidence,
+        "reply_text": greeting_text,
         "status": "ok",
     })
-    return {"status": "ok", "phoneme_text": phoneme_text}
+    return {"status": "ok", "greeting_text": greeting_text}
 
 
 @router.post("/detection", response_model=ActivateResponse)
 async def on_detection(payload: DetectionPayload, request: Request):
     """
     Combined vision + STT event from PI 5.
-    If person is registered and STT confidence is sufficient,
-    runs the full chatbot pipeline (grammar → RAG → intent routing).
+    Runs the full chatbot pipeline (grammar → RAG → intent routing) for registered persons.
     """
     global _active
     app_state = request.app.state
     cfg = app_state.settings
 
-    # Unknown / unregistered person
+    pi5_url = f"http://{cfg['server']['pi5_ip']}:{cfg['server']['pi5_port']}"
+
+    # PI 5 goes INACTIVE after posting /detection — server must push active=1
+    # after the full pipeline to re-enable it, except on farewell (active=0).
+
+    # Unknown / unregistered person — re-enable PI 5 immediately so it can listen again
     if not payload.is_registered or payload.person_id == "Unknown":
+        _active = 0
+        await _push_active(1, pi5_url)
         log_event({
             "endpoint": "/detection",
             "person_id": payload.person_id,
             "is_registered": False,
             "stt_raw": payload.stt.text,
-            "stt_confidence": payload.stt.confidence,
             "status": "skipped",
         })
         return ActivateResponse(active=0)
@@ -148,49 +205,62 @@ async def on_detection(payload: DetectionPayload, request: Request):
     _active = 1
     _cleanup_expired_sessions(cfg["session"]["session_timeout_seconds"])
 
-    # STT confidence gate
-    if payload.stt.confidence < cfg["thresholds"]["stt_confidence"]:
-        logger.info(
-            "STT confidence too low (%.2f) for %s — speaking fallback",
-            payload.stt.confidence, payload.person_id,
-        )
-        from mcp.tts_router import to_tts_ready
-        fallback = to_tts_ready("ขอโทษค่ะ ช่วยพูดอีกครั้งได้ไหมค่ะ")
-        await app_state.intent_router._speak(fallback)
-        log_event({
-            "endpoint": "/detection",
-            "person_id": payload.person_id,
-            "is_registered": True,
-            "stt_raw": payload.stt.text,
-            "stt_confidence": payload.stt.confidence,
-            "reply_text": "ขอโทษค่ะ ช่วยพูดอีกครั้งได้ไหมค่ะ",
-            "status": "low_confidence_fallback",
-            "errors": [f"STT confidence {payload.stt.confidence:.2f} below threshold"],
-        })
-        return ActivateResponse(active=1)
-
     # Session
     sess = _get_or_create_session(payload.person_id)
 
+    # Resolve student info — cached in session to avoid repeated DB calls
+    if "student_year" not in sess:
+        mysql_cfg = cfg.get("mysql", {})
+        if payload.student_id:
+            det_student_row = fetch_student_by_id(
+                student_id=payload.student_id,
+                host=mysql_cfg.get("host", "localhost"),
+                port=int(mysql_cfg.get("port", 3306)),
+                user=mysql_cfg.get("user", "root"),
+                password=mysql_cfg.get("password", "root"),
+                database=mysql_cfg.get("database", "capstone"),
+            )
+            sess["student_db_id"] = payload.student_id
+        else:
+            det_student_row = fetch_student_by_nickname(
+                nick_name=_clean_name(payload.person_id),
+                host=mysql_cfg.get("host", "localhost"),
+                port=int(mysql_cfg.get("port", 3306)),
+                user=mysql_cfg.get("user", "root"),
+                password=mysql_cfg.get("password", "root"),
+                database=mysql_cfg.get("database", "capstone"),
+            )
+            sess["student_db_id"] = str(det_student_row.get("student_id", payload.person_id)) if det_student_row else payload.person_id
+        if det_student_row:
+            enroll = int(det_student_row.get("enrollment_year", datetime.utcnow().year))
+            sess["student_year"] = min(max(datetime.utcnow().year - enroll + 1, 1), 4)
+        else:
+            sess["student_year"] = 1
+
+    display_name = _clean_name(payload.thai_name) if payload.thai_name else _clean_name(payload.person_id)
+
+    t_start = time.perf_counter()
+
     # 1. Grammar correction
-    corrected = app_state.grammar_corrector.correct(
-        payload.stt.text,
-        confidence=payload.stt.confidence,
-    )
+    t0 = time.perf_counter()
+    corrected = app_state.grammar_corrector.correct(payload.stt.text)
+    t_grammar = (time.perf_counter() - t0) * 1000
     logger.info(
-        "Detection from %s — raw=%r  corrected=%r  conf=%.2f",
-        payload.person_id, payload.stt.text, corrected, payload.stt.confidence,
+        "Detection from %s — raw=%r  corrected=%r",
+        payload.person_id, payload.stt.text, corrected,
     )
 
     # 2. RAG chatbot
+    t0 = time.perf_counter()
     response = await app_state.chatbot.ask_and_store(
         question=corrected,
         session_id=sess["session_id"],
-        student_id=payload.person_id,
-        student_name=_clean_name(payload.person_id),
-        student_year=1,
+        student_id=sess["student_db_id"],
+        student_name=display_name,
+        student_year=sess["student_year"],
         history=sess["history"],
     )
+    t_llm = (time.perf_counter() - t0) * 1000
 
     # Update short-term history
     sess["history"].append((corrected, response["reply_text"]))
@@ -198,19 +268,43 @@ async def on_detection(payload: DetectionPayload, request: Request):
         sess["history"].pop(0)
 
     # 3. Intent routing (TTS + ROS2 in parallel)
+    from mcp.tts_router import to_tts_ready
+    phoneme_text = to_tts_ready(response.get("reply_text", ""))
+    t0 = time.perf_counter()
     route_result = await app_state.intent_router.route(response)
+    t_tts = (time.perf_counter() - t0) * 1000
+
+    t_total = (time.perf_counter() - t_start) * 1000
+
+    logger.info(
+        "⏱  pipeline [%s] grammar=%.0fms  llm=%.0fms  tts=%.0fms  total=%.0fms",
+        payload.person_id, t_grammar, t_llm, t_tts, t_total,
+    )
+
+    # Re-enable PI 5 for the next interaction — always push active=1 after pipeline.
+    if response.get("intent") == "farewell":
+        _active = 0
+    await _push_active(1, pi5_url)
 
     log_event({
         "endpoint": "/detection",
         "person_id": payload.person_id,
+        "display_name": display_name,
         "is_registered": True,
         "stt_raw": payload.stt.text,
-        "stt_confidence": payload.stt.confidence,
         "corrected": corrected,
+        "rag_collection": response.get("rag_collection", ""),
         "reply_text": response.get("reply_text", ""),
+        "phoneme_text": phoneme_text,
         "intent": response.get("intent", ""),
         "destination": response.get("destination"),
         "routed_to": route_result.get("routed_to", []),
+        "timing_ms": {
+            "grammar": round(t_grammar),
+            "llm": round(t_llm),
+            "tts": round(t_tts),
+            "total": round(t_total),
+        },
         "status": "ok",
     })
     return ActivateResponse(active=1)
@@ -220,3 +314,49 @@ async def on_detection(payload: DetectionPayload, request: Request):
 async def get_activate() -> ActivateResponse:
     """PI 5 polls this to check if robot is in active (conversation) mode."""
     return ActivateResponse(active=_active)
+
+
+@router.post("/audio_detection", response_model=ActivateResponse)
+async def on_audio_detection(
+    request: Request,
+    audio: UploadFile = File(..., description="WAV audio file — Thai speech from microphone"),
+    person_id: str = Form(...),
+    is_registered: bool = Form(...),
+    thai_name: Optional[str] = Form(None),
+    student_id: Optional[str] = Form(None),
+    track_id: Optional[int] = Form(None),
+    vision_confidence: Optional[float] = Form(None),
+    timestamp: Optional[str] = Form(None),
+):
+    """
+    Server-side STT variant of /detection.
+    PI 5 sends raw WAV audio + person metadata as multipart/form-data.
+    Server transcribes audio via Typhoon2-Audio sidecar, then runs the
+    full chatbot pipeline (grammar → RAG → intent routing).
+    """
+    from tts.typhoon_audio_tts import transcribe as stt_transcribe
+
+    cfg = request.app.state.settings
+    sidecar_url = cfg.get("audio_service", {}).get("base_url", "http://localhost:8001")
+
+    # Step 1 — Transcribe audio via sidecar
+    wav_bytes = await audio.read()
+    stt_text = await stt_transcribe(wav_bytes, sidecar_url=sidecar_url)
+    if not stt_text:
+        logger.warning("STT returned empty transcript for %s — treating as empty utterance", person_id)
+        stt_text = ""
+
+    logger.info("Audio STT [%s]: %r", person_id, stt_text[:80])
+
+    # Step 2 — Build DetectionPayload and delegate to the existing pipeline
+    fake_payload = DetectionPayload(
+        timestamp=timestamp or datetime.utcnow().isoformat(),
+        person_id=person_id,
+        thai_name=thai_name,
+        student_id=student_id,
+        is_registered=is_registered,
+        track_id=track_id,
+        bbox=None,
+        stt=STTResult(text=stt_text, language="th", duration=0.0),
+    )
+    return await on_detection(fake_payload, request)

@@ -63,6 +63,65 @@ def fetch_timetable_rows(
         return {}
 
 
+def fetch_student_by_nickname(
+    nick_name: str,
+    host: str = "localhost",
+    port: int = 3306,
+    user: str = "root",
+    password: str = "root",
+    database: str = "capstone",
+) -> Optional[dict]:
+    """
+    Look up a single student by nick_name (the cleaned person_id from face recognition).
+    Returns a dict with student fields, or None if not found.
+    Expected columns: student_id, first_name, last_name, nick_name, student_email, year (if exists).
+    """
+    try:
+        conn = _get_conn(host, port, user, password, database)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT * FROM Students WHERE nick_name = %s LIMIT 1",
+            (nick_name,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        return row
+    except Exception as exc:
+        logger.error("MySQL fetch_student_by_nickname error: %s", exc)
+        global _conn
+        _conn = None
+        return None
+
+
+def fetch_student_by_id(
+    student_id: str,
+    host: str = "localhost",
+    port: int = 3306,
+    user: str = "root",
+    password: str = "root",
+    database: str = "capstone",
+) -> Optional[dict]:
+    """
+    Look up a single student by their student_id (primary key sent by PI 5).
+    Returns a dict with student fields, or None if not found.
+    """
+    try:
+        conn = _get_conn(host, port, user, password, database)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT * FROM Students WHERE student_id = %s LIMIT 1",
+            (student_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        return row
+    except Exception as exc:
+        logger.error("MySQL fetch_student_by_id error: %s", exc)
+        global _conn
+        _conn = None
+        return None
+
+
 def fetch_student_context(
     host: str = "localhost",
     port: int = 3306,

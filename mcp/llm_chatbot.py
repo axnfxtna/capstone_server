@@ -40,11 +40,19 @@ logger = logging.getLogger(__name__)
 # time_table must come before curriculum because "เรียน" appears in both.
 _ROUTE_KEYWORDS: Dict[str, List[str]] = {
     "chat_history": [
+        # Explicit memory references
         "ครั้งที่แล้ว", "เมื่อกี้", "ก่อนหน้า", "ถามอะไร",
         "คุยอะไร", "ประวัติ", "history", "previous",
+        # Identity / intro — robot should answer from its own context
+        "คุณคือ", "แนะนำตัว", "ชื่ออะไร", "คือใคร", "คุณเป็น",
+        "ทำอะไร", "ทำอะไรได้",
+        # Conversational / emotional / greetings
+        "สวัสดี", "หวัดดี", "ยินดี", "ดีใจ", "เป็นยังไง",
+        "สบายดี", "เป็นไง", "โอเค", "โอ้เค", "ขอบคุณ", "ขอบใจ",
+        "มู้ด", "รู้สึก", "อารมณ์",
     ],
     "mysql_students": [
-        "นักศึกษา", "ชื่อ", "อีเมล", "นศ", "รหัสนักศึกษา",
+        "นักศึกษา", "อีเมล", "นศ", "รหัสนักศึกษา",
         "สมาชิก", "ใครบ้าง", "คนไหน", "รุ่น",
         "student", "email",
     ],
@@ -74,12 +82,14 @@ _THAI_TO_ENG: Dict[str, str] = {
 }
 
 
-def _route_query(question: str, last_route: Optional[str] = None) -> str:
+def _route_query(question: str) -> str:
     q_lower = question.lower()
     for collection, keywords in _ROUTE_KEYWORDS.items():
         if any(kw in q_lower for kw in keywords):
             return collection
-    return last_route or "uni_info"
+    # Default: treat unmatched questions as casual conversation
+    # (uses memory + session history context rather than hitting a wrong DB collection)
+    return "chat_history"
 
 
 def _augment_for_curriculum(question: str) -> str:
@@ -197,12 +207,17 @@ _CHATBOT_PROMPT_TEMPLATE = """\
 
 คำถามปัจจุบัน: {question}
 
+intent ให้เลือกตามนี้:
+- chat     = สนทนาทั่วไป ทักทาย ถามเรื่องตัวเอง
+- info     = ถามข้อมูลมหาวิทยาลัย ตารางเรียน หลักสูตร
+- navigate = ต้องการไปยังสถานที่ในตึกโหล
+- farewell = กล่าวลา ไม่ต้องการความช่วยเหลือแล้ว
+
 ตอบกลับเป็น JSON เท่านั้น รูปแบบ:
 {{
   "reply_text": "ข้อความตอบกลับภาษาไทย",
   "intent": "chat | info | navigate | farewell",
-  "destination": "ชื่อสถานที่ หรือ null",
-  "confidence": 0.0
+  "destination": "ชื่อสถานที่ภาษาไทย หรือ null"
 }}
 """
 
@@ -228,7 +243,6 @@ class LLMChatbot:
         self.rag_top_k = rag_top_k
         self.mem_top_k = mem_top_k
         self.mysql_cfg = mysql_cfg or {}
-        self._last_route: Optional[str] = None
 
     # ------------------------------------------------------------------
     def ask(
@@ -245,8 +259,7 @@ class LLMChatbot:
         Returns a dict matching ChatbotResponse schema.
         """
         # 1. Route query
-        collection = _route_query(question, self._last_route)
-        self._last_route = collection
+        collection = _route_query(question)
 
         # 2. RAG context from dataset
         rag_context = _build_rag_context(question, collection, self.rag_top_k, self.mysql_cfg)
@@ -288,10 +301,10 @@ class LLMChatbot:
             parsed.get("reply_text", _FALLBACK_RESPONSE["reply_text"])
         )
         return {
-            "reply_text":  reply_text,
-            "intent":      parsed.get("intent", "chat"),
-            "destination": parsed.get("destination"),
-            "confidence":  float(parsed.get("confidence", 0.5)),
+            "reply_text":     reply_text,
+            "intent":         parsed.get("intent", "chat"),
+            "destination":    parsed.get("destination"),
+            "rag_collection": collection,
         }
 
     # ------------------------------------------------------------------

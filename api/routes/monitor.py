@@ -110,8 +110,14 @@ _HTML = """<!DOCTYPE html>
       if (e.corrected && e.corrected !== e.stt_raw) {
         html += '<div class="row"><span class="label">corrected</span><span class="value">' + e.corrected + '</span></div>';
       }
+      if (e.rag_collection) {
+        html += '<div class="row"><span class="label">RAG</span><span class="value" style="color:#8b949e">collection: ' + e.rag_collection + '</span></div>';
+      }
       if (e.reply_text) {
         html += '<div class="row"><span class="label">reply</span><span class="value">' + e.reply_text + '</span></div>';
+      }
+      if (e.phoneme_text && e.phoneme_text !== e.reply_text) {
+        html += '<div class="row"><span class="label">TTS text</span><span class="value" style="color:#8b949e">' + e.phoneme_text + '</span></div>';
       }
       if (e.intent) {
         let intentStr = '<span class="' + intentClass(e.intent) + '">' + e.intent + '</span>';
@@ -120,6 +126,20 @@ _HTML = """<!DOCTYPE html>
       }
       if (e.routed_to && e.routed_to.length) {
         html += '<div class="row"><span class="label">routed to</span><span class="value">' + e.routed_to.join(', ') + '</span></div>';
+      }
+      if (e.timing_ms) {
+        const t = e.timing_ms;
+        const bar = (ms, max) => {
+          const pct = Math.min(100, ms / max * 100);
+          const col = ms > 5000 ? '#f85149' : ms > 2000 ? '#e3b341' : '#3fb950';
+          return '<span style="display:inline-block;width:' + pct.toFixed(0) + 'px;height:8px;background:' + col + ';border-radius:2px;vertical-align:middle;margin-right:4px"></span>';
+        };
+        html += '<div class="row"><span class="label">timing</span><span class="value" style="color:#8b949e">' +
+          'grammar ' + bar(t.grammar,2000) + t.grammar + 'ms &nbsp;' +
+          'llm ' + bar(t.llm,10000) + t.llm + 'ms &nbsp;' +
+          'tts ' + bar(t.tts,5000) + t.tts + 'ms &nbsp;' +
+          '<b style="color:#c9d1d9">total ' + t.total + 'ms</b>' +
+          '</span></div>';
       }
       if (e.status) {
         const cls2 = e.status === 'ok' ? 'tag-ok' : e.status === 'skipped' ? 'tag-skip' : 'tag-err';
