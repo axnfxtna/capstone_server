@@ -12,7 +12,7 @@ from typing import Optional
 import httpx
 
 from llm.typhoon_client import TyphoonClient, enforce_female_particle
-from mcp.tts_router import to_tts_ready
+from mcp.tts_router import to_tts_ready, expand_for_tts
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ _YEAR_TONE = {
     1: "เน้นการต้อนรับสู่รั้วมหาวิทยาลัย ใช้คำที่ดูใจดีเหมือนพี่สาวดูแลน้อง",
     2: "เน้นความกระตือรือร้น ถามไถ่เรื่องความท้าทายในวิชาที่เริ่มหนักขึ้น",
     3: "เน้นความเอาใจใส่ ถามเรื่องความพร้อมหรือความตื่นเต้นในการหาที่ฝึกงาน",
-    4: "เน้นความภาคภูมิใจและให้เกียรติ ให้กำลังใจในฐานะว่าที่บัณฑิต",
+    4: "คุยแบบเป็นกันเองและให้กำลังใจที่ใกล้เรียนจบ",
 }
 
 _TIME_OF_DAY = {
@@ -34,12 +34,30 @@ _TIME_OF_DAY = {
 
 
 def _get_time_of_day() -> str:
-    from datetime import datetime
-    hour = datetime.now().hour
+    from datetime import datetime, timezone, timedelta
+    tz_thai = timezone(timedelta(hours=7))
+    hour = datetime.now(tz_thai).hour
     for label, hours in _TIME_OF_DAY.items():
         if hour in hours:
             return label
     return "เช้า"  # midnight–5am fallback
+
+_STRANGER_GREETING_PROMPT = """\
+คุณคือ "ขนมทาน" หุ่นยนต์บริการหญิงของ KMITL ที่ตึก E-12 ชั้น 12
+ช่วงเวลา: {time_of_day}
+
+กฎเคร่งครัด:
+- ใช้ "หนู" แทนตัวเอง ใช้ "ค่ะ" ลงท้ายเสมอ ห้ามใช้ "ข้าพเจ้า" หรือ "ดิฉัน"
+- ตอบ 1 ประโยคเท่านั้น ห้ามเกิน 1 ประโยค
+- ทักทายตามช่วงเวลา + แนะนำชื่อ รวมในประโยคเดียวสั้นๆ
+- ห้ามถามชื่อ ห้ามถามคำถามซ้อนคำถาม ห้ามบอกความสามารถของตัวเองในการทักทาย
+
+ตัวอย่างที่ถูกต้อง (สั้นแบบนี้เท่านั้น):
+{{"greeting_text": "สวัสดีตอน{time_of_day}ค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ"}}
+
+ตอบกลับเป็น JSON เท่านั้น:
+{{"greeting_text": "..."}}
+"""
 
 _GREETING_PROMPT = """\
 คุณคือ "ขนมทาน" หุ่นยนต์บริการหญิงของ KMITL (บุคลิก: สุภาพ ร่าเริง ช่างสังเกต)
@@ -51,10 +69,12 @@ _GREETING_PROMPT = """\
 ความจำจากครั้งก่อน: {memory_summary}
 
 Constraint:
-- ถ้ามีความจำ ให้ทักทาย + พูดถึงเรื่องนั้นในเชิงบวกและกว้างๆ ห้ามลงรายละเอียดเชิงเทคนิค
-- ถ้าไม่มีความจำ ให้ทักทายตามช่วงเวลาและแนะนำตัวสั้นๆ
-- ห้ามถามคำถามซ้อนคำถาม ให้เลือกถามอย่างใดอย่างหนึ่ง
+- ตอบ 1 ประโยคสั้นๆ เท่านั้น ห้ามเกิน 1 ประโยคโดยเด็ดขาด ห้ามต่อประโยคด้วยคำเชื่อม
+- ถ้ามีความจำ ให้ทักทาย + กล่าวถึงเรื่องนั้นกว้างๆ ในประโยคเดียว
+- ถ้าไม่มีความจำ ให้ถามแบบเปิดกว้างเหมือนเพื่อนคุยกัน เช่น "เป็นยังไงบ้างคะ" "ช่วงนี้เป็นไงบ้างคะ" "วันนี้เหนื่อยไหมคะ"
+- ห้ามถามตรงๆ ว่า "มีความสุขไหม" หรือ "มีความสุขกับ..." เพราะฟังดูเหมือนหุ่นยนต์
 - ห้ามใช้นามสกุลหรือวงเล็บ
+- ห้ามพูดถึงความสามารถของตัวเองในการทักทาย
 
 ตอบกลับเป็น JSON เท่านั้น:
 {{
@@ -115,25 +135,50 @@ class GreetingBot:
             time_of_day=_get_time_of_day(),
             memory_summary=memory_summary,
         )
-        parsed = self.llm.generate_structured(prompt, temperature=0.7, max_tokens=128)
+        parsed = self.llm.generate_structured(prompt, temperature=0.7, max_tokens=64)
 
         if parsed and "greeting_text" in parsed:
             greeting_text = enforce_female_particle(parsed["greeting_text"])
         else:
-            greeting_text = f"สวัสดีค่ะ คุณ {student_name} ดีใจที่ได้พบค่ะ มีอะไรให้ช่วยไหมค่ะ"
+            greeting_text = f"สวัสดีตอน{_get_time_of_day()}ค่ะ {student_name} วันนี้เป็นยังไงบ้างคะ"
 
-        # 2. Convert to TTS-ready text (clean/normalize only, no phoneme rules)
-        tts_text = to_tts_ready(greeting_text)
+        # 2. Expand English/numbers then syllabify for non-typhoon engines
+        expanded = expand_for_tts(greeting_text)
+        tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
 
         # 3. Fire TTS + ROS2 stop in parallel
         await asyncio.gather(
-            self._send_tts(greeting_text),
+            self._send_tts(tts_text),
             self._send_navigation("stop_roaming"),
             return_exceptions=True,
         )
 
         # Return (original_text, tts_text) so caller can log the clean Thai
         return greeting_text, tts_text
+
+    # ------------------------------------------------------------------
+    async def greet_stranger(self) -> str:
+        """
+        Generate a visitor greeting (no name/year/memory), then fire TTS + ROS2 stop.
+        Returns greeting_text.
+        """
+        prompt = _STRANGER_GREETING_PROMPT.format(time_of_day=_get_time_of_day())
+        parsed = self.llm.generate_structured(prompt, temperature=0.7, max_tokens=64)
+
+        if parsed and "greeting_text" in parsed:
+            greeting_text = enforce_female_particle(parsed["greeting_text"])
+        else:
+            greeting_text = "สวัสดีค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ"
+
+        expanded = expand_for_tts(greeting_text)
+        tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
+
+        await asyncio.gather(
+            self._send_tts(tts_text),
+            self._send_navigation("stop_roaming"),
+            return_exceptions=True,
+        )
+        return greeting_text
 
     # ------------------------------------------------------------------
     async def _send_tts(self, text: str) -> None:

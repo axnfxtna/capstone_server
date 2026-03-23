@@ -95,6 +95,26 @@ async def get_turns(
     return [dict(r) for r in reversed(rows)]
 
 
+async def get_latest_session(
+    student_id: str,
+    db_path: str = _DEFAULT_DB,
+) -> Optional[Dict]:
+    """Return the most recent session row for a student (used for restart recovery)."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT * FROM sessions
+            WHERE student_id = ?
+            ORDER BY last_active DESC
+            LIMIT 1
+            """,
+            (student_id,),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
 async def upsert_session(
     session_id: str,
     student_id: Optional[str],

@@ -63,6 +63,9 @@ class GrammarCorrector:
                 max_tokens=256,
             )
             corrected = corrected.strip()
+            # Strip "Output:" prefix if LLM mimics the few-shot format
+            if corrected.lower().startswith("output:"):
+                corrected = corrected[len("output:"):].strip()
             if not corrected:
                 logger.warning("GrammarCorrector: empty LLM response, using raw")
                 return raw_text

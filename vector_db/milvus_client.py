@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════
 
 _embedder: Optional[SentenceTransformer] = None
-_EMB_DIM = 384
+_EMB_DIM = 1024
 
 
-def get_embedder(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> SentenceTransformer:
+def get_embedder(model_name: str = "BAAI/bge-m3") -> SentenceTransformer:
     global _embedder
     if _embedder is None:
         logger.info("Loading embedding model: %s", model_name)
@@ -45,7 +45,7 @@ def get_embedder(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> 
     return _embedder
 
 
-def embed(text: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> List[float]:
+def embed(text: str, model_name: str = "BAAI/bge-m3") -> List[float]:
     emb = get_embedder(model_name)
     vec = emb.encode([text], normalize_embeddings=True)[0]
     return vec.tolist()
@@ -76,7 +76,7 @@ def connect_milvus(
 # ═══════════════════════════════════════════════════════════════════════
 
 MEMORY_COLLECTION = "conversation_memory"
-MEMORY_DIM = 384   # all-MiniLM-L6-v2
+MEMORY_DIM = 1024  # BAAI/bge-m3
 
 
 def ensure_memory_collection(dim: int = MEMORY_DIM) -> Collection:
@@ -119,7 +119,7 @@ def insert_memory(
     summary_text: str,
     intent: str,
     timestamp: str,
-    emb_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    emb_model: str = "BAAI/bge-m3",
 ) -> None:
     """Embed summary_text and insert into conversation_memory."""
     col = ensure_memory_collection()
@@ -141,7 +141,7 @@ def search_memory(
     query: str,
     student_id: str,
     top_k: int = 3,
-    emb_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    emb_model: str = "BAAI/bge-m3",
 ) -> List[Dict]:
     """
     Search conversation_memory for semantically similar past turns
@@ -179,7 +179,7 @@ def search_collection(
     query: str,
     collection_name: str,
     top_k: int = 5,
-    emb_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    emb_model: str = "BAAI/bge-m3",
 ) -> List[Dict]:
     """
     Generic Milvus search against any existing collection.

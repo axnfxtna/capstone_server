@@ -66,8 +66,11 @@ def enforce_female_particle(text: str) -> str:
     text = re.sub(r"ครับผม", "ค่ะ", text)
     # "ครับ" → "ค่ะ"
     text = re.sub(r"ครับ", "ค่ะ", text)
-    # Male pronoun "ผม" → "ฉัน"
-    text = re.sub(r"ผม", "ฉัน", text)
+    # Male pronoun "ผม" → "หนู"
+    text = re.sub(r"ผม", "หนู", text)
+    # Formal pronouns → "หนู"
+    text = re.sub(r"ข้าพเจ้า", "หนู", text)
+    text = re.sub(r"ดิฉัน", "หนู", text)
     # Strip full English sentences (any run of ASCII words ending with punctuation or newline)
     text = re.sub(r"[A-Za-z][A-Za-z0-9 ,'\-]{8,}[.!?]", "", text)
     text = re.sub(r" {2,}", " ", text).strip()
@@ -86,9 +89,21 @@ SYSTEM_PROMPT = (
     "1. ตอบเป็นภาษาไทยเท่านั้น สามารถใช้คำภาษาอังกฤษได้เฉพาะชื่อเฉพาะ เช่น KMITL, RAI, email\n"
     "2. ห้ามใช้ตัวอักษรภาษาจีน ภาษาเกาหลี หรือภาษาญี่ปุ่นโดยเด็ดขาด\n"
     "3. ตอบสั้น กระชับ และเป็นมิตร ใช้ภาษาสุภาพ ลงท้ายด้วย \"ค่ะ\" เสมอ ห้ามใช้ \"ครับ\"\n"
-    "4. ถ้าไม่มีข้อมูลให้บอกตรงๆ ว่าไม่ทราบ\n"
+    "4. ถ้าไม่มีข้อมูล ให้ตอบว่า \"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ\" ห้ามเดา ห้ามขยายความ\n"
     "5. ใช้คำว่า \"ห้องปฏิบัติการ\" หรือ \"แลป\" แทนคำว่า lab"
 )
+
+
+_THAI_DAYS = {0: "จันทร์", 1: "อังคาร", 2: "พุธ", 3: "พฤหัสบดี",
+              4: "ศุกร์", 5: "เสาร์", 6: "อาทิตย์"}
+
+
+def _current_datetime_str() -> str:
+    from datetime import datetime, timezone, timedelta
+    tz_thai = timezone(timedelta(hours=7))
+    now = datetime.now(tz_thai)
+    day_th = _THAI_DAYS[now.weekday()]
+    return f"วัน{day_th} เวลา {now.strftime('%H:%M')} น."
 
 
 def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
@@ -98,10 +113,14 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
     return (
         f"คุณคือ \"ขนมทาน\" หุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง "
         f"หรือเรียกสั้นๆ ว่า ลาดกระบัง\n"
-        f"คุณกำลังพูดคุยกับ {student_name}\n\n"
+        f"คุณกำลังพูดคุยกับ {student_name}\n"
+        f"ปัจจุบัน: {_current_datetime_str()}\n\n"
+        "ข้อมูลเกี่ยวกับตัวคุณ:\n"
+        "- คุณทำงานประจำอยู่ที่ชั้น 12 ของตึก E-12 (ตึกสิบสอง) ในโซน D ของวิทยาเขต\n"
+        "- ตึก E-12 คืออาคารเรียนรวม 12 ชั้น ของคณะวิศวกรรมศาสตร์ สจล.\n\n"
         "ความสามารถของคุณมีเพียง 2 อย่างเท่านั้น:\n"
         "1. สนทนาและตอบคำถามเกี่ยวกับมหาวิทยาลัย เช่น ตารางเรียน หลักสูตร ข้อมูลวิทยาเขต\n"
-        "2. นำทางไปยังสถานที่ภายในตึกโหล (E-12 Building) เท่านั้น\n\n"
+        "2. นำทางไปยังสถานที่ภายในตึกสิบสอง (E-12 Building) เท่านั้น\n\n"
         "ถ้านักศึกษาถามหรือขอสิ่งที่อยู่นอกเหนือจาก 2 อย่างนี้ ให้ปฏิเสธสุภาพๆ และบอกขอบเขตของตัวเอง\n\n"
         "กฎที่ต้องปฏิบัติเสมอ:\n"
         f"- ถ้าจะเรียกชื่อนักศึกษาให้ใช้ว่า \"{student_name}\" เท่านั้น ห้ามใส่นามสกุลหรือวงเล็บ\n"
@@ -109,7 +128,7 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
         "- ตอบเป็นภาษาไทยเสมอ ไม่ว่านักศึกษาจะพูดภาษาใด\n"
         "- ตอบสั้น กระชับ ไม่เกิน 2 ประโยค เพราะข้อความจะถูกแปลงเป็นเสียงพูด\n"
         "- ห้ามใช้ \"ครับ\" หรือ \"ผม\" ใช้ \"ฉัน\" แทน\n"
-        "- ถ้าไม่รู้คำตอบ ให้บอกว่าไม่ทราบและแนะนำให้ถามเจ้าหน้าที่"
+        "- ถ้าไม่รู้คำตอบ ให้ตอบว่า \"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ\" ห้ามเดา ห้ามเสนอแนะหรืออธิบายเพิ่มเติม"
     )
 
 
@@ -160,7 +179,7 @@ class TyphoonClient:
             return clean_cjk(text)
         except Exception as exc:
             logger.error("TyphoonClient.generate error: %s", exc)
-            return "ขออภัยค่ะ ไม่สามารถประมวลผลได้ในขณะนี้"
+            return "รบกวนพูดใหม่อีกทีได้มั้ยคะ"
 
     # ------------------------------------------------------------------
     def chat(
@@ -190,7 +209,7 @@ class TyphoonClient:
             return clean_cjk(content)
         except Exception as exc:
             logger.error("TyphoonClient.chat error: %s", exc)
-            return "ขออภัยค่ะ ไม่เข้าใจ"
+            return "รบกวนพูดใหม่อีกทีได้มั้ยคะ"
 
     # ------------------------------------------------------------------
     def generate_structured(

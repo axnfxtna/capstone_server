@@ -39,6 +39,7 @@ logging.basicConfig(
         logging.StreamHandler(),
         logging.FileHandler("logs/server.log", encoding="utf-8"),
     ],
+    force=True,
 )
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,178 @@
+KhanomTan Accuracy Evaluation — 2026-03-23 14:47
+
+
+=================================================================
+  0. SERVER HEALTH
+=================================================================
+  ✅  GET /health → 200
+
+=================================================================
+  A. INTENT ACCURACY + F1 PER CLASS
+=================================================================
+  Fixtures: 23   Wait per request: 6.0s
+
+  [01/23] สวัสดีค่ะ
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=1.0
+        reply: 'สวัสดีค่ะ ยินดีช่วยเหลือค่ะ'
+  [02/23] วันนี้เหนื่อยมากเลย
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=0.5
+        reply: 'ฉันเข้าใจค่ะ ถ้ามีอะไรให้ช่วยเหลือ บอกได้นะคะ'
+  [03/23] ขนมทานคือใครอ่ะ
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=0.5
+        reply: 'ฉันคือขนมทาน หุ่นยนต์บริการของมหาวิทยาลัยลาดกระบังค่ะ ยินดีช่วยเหลือค่ะ'
+  [04/23] ทำอะไรได้บ้างคะ
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=0.5
+        reply: 'ฉันสามารถสนทนาและตอบคำถามเกี่ยวกับม.ลาดกระบัง และนำทางภายในตึก E-12 ค่ะ'
+  [05/23] ขอบคุณมากนะคะ
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=1.0
+        reply: 'ยินดีช่วยเสมอค่ะ ถ้ามีอะไรให้ช่วยเหลือ บอกได้นะคะ'
+  [06/23] เป็นยังไงบ้างช่วงนี้
+        expected: intent=chat  route=chat_history
+        ✅  intent='chat'  rag='chat_history'  TSR=1.0
+        reply: 'สบายดีค่ะ ปาล์มมีอะไรให้ช่วยเหลือไหมคะ?'
+  [07/23] ห้องน้ำอยู่ที่ไหนคะ
+        expected: intent=info  route=uni_info
+        ❌  intent='navigate'  rag='uni_info'  TSR=0.0
+        reply: 'ตามหนูมาเลยค่ะ'
+  [08/23] ตึก E-12 อยู่โซนไหน
+        expected: intent=info  route=uni_info
+        ✅  intent='info'  rag='uni_info'  TSR=1.0
+        reply: 'ตึก E-12 อยู่ใน Zone D ค่ะ'
+  [09/23] โรงอาหารอยู่ตึกไหน
+        expected: intent=info  route=uni_info
+        ✅  intent='info'  rag='uni_info'  TSR=1.0
+        reply: 'โรงอาหารอยู่ในตึก E-12 ค่ะ'
+  [10/23] ห้องสมุดอยู่ชั้นไหน
+        expected: intent=info  route=uni_info
+        ❌  intent='navigate'  rag='uni_info'  TSR=0.0
+        reply: 'ตามหนูมาเลยค่ะ'
+  [11/23] หลักสูตร RAI มีกี่หน่วยกิต
+        expected: intent=info  route=curriculum
+        ✅  intent='info'  rag='curriculum'  TSR=1.0
+        reply: 'หลักสูตร RAI ต้องเรียนรวมทั้งหมด 129 หน่วยกิตค่ะ'
+  [12/23] วิชา Programming เรียนปีไหน
+        expected: intent=info  route=curriculum
+        ✅  intent='info'  rag='curriculum'  TSR=1.0
+        reply: 'วิชา Computer Programming เรียนในปีหนึ่งค่ะ'
+  [13/23] เรียนกี่ปีจบ
+        expected: intent=info  route=curriculum
+        ✅  intent='info'  rag='curriculum'  TSR=1.0
+        reply: 'หลักสูตร RAI เรียน 4 ปีค่ะ'
+  [14/23] วันจันทร์มีวิชาอะไรบ้าง
+        expected: intent=info  route=time_table
+        ✅  intent='info'  rag='curriculum'  TSR=1.0
+        reply: 'วันจันทร์มีวิชาอะไรบ้างค่ะ ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  [15/23] วิชา Programming เรียนวันไหน
+        expected: intent=info  route=time_table
+        ✅  intent='info'  rag='curriculum'  TSR=1.0
+        reply: 'วิชา Computer Programming เรียนในปีหนึ่งค่ะ'
+  [16/23] ตารางเรียนวันศุกร์มีอะไรบ้าง
+        expected: intent=info  route=time_table
+        ✅  intent='info'  rag='mysql_students'  TSR=1.0
+        reply: 'วันศุกร์มีวิชาอะไรบ้างค่ะ ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  [17/23] พาฉันไปห้องสมุดหน่อย
+        expected: intent=navigate  route=uni_info  dest≈ห้องสมุด
+        ✅  intent='navigate'  rag='uni_info'  dest='ห้องสมุด' ✅  TSR=1.0
+        reply: 'ตามหนูมาเลยค่ะ'
+  [18/23] อยากไปห้องน้ำ
+        expected: intent=navigate  route=uni_info  dest≈ห้องน้ำ
+        ✅  intent='navigate'  rag='chat_history'  dest='สอนคามบั' ❌  TSR=1.0
+        reply: 'ตามหนูมาเลยค่ะ'
+  [19/23] พาไปห้อง 1201
+        expected: intent=navigate  route=uni_info  dest≈1201
+        ✅  intent='navigate'  rag='chat_history'  dest='ห้อง 1201' ✅  TSR=1.0
+        reply: 'ตามหนูมาเลยค่ะ'
+  [20/23] ไปโรงอาหารได้ไหมคะ
+        expected: intent=navigate  route=uni_info  dest≈โรงอาหาร
+        ✅  intent='navigate'  rag='uni_info'  dest='โรงอาหาร' ✅  TSR=1.0
+        reply: 'โรงอาหารอยู่ในตึก E-12 ค่ะ ตามหนูมาเลยค่ะ'
+  [21/23] ขอบคุณนะคะ ลาก่อน
+        expected: intent=farewell  route=chat_history
+        ✅  intent='farewell'  rag='chat_history'  TSR=1.0
+        reply: 'ลาก่อนค่ะ ขนมทานยินดีช่วยเสมอค่ะ'
+  [22/23] ไม่ต้องการความช่วยเหลือแล้วค่ะ
+        expected: intent=farewell  route=chat_history
+        ✅  intent='farewell'  rag='chat_history'  TSR=1.0
+        reply: 'ลาก่อนค่ะ ขนมทานยินดีช่วยเสมอค่ะ'
+  [23/23] บายค่ะ
+        expected: intent=farewell  route=chat_history
+        ✅  intent='farewell'  rag='chat_history'  TSR=1.0
+        reply: 'ลาก่อนค่ะ ขนมทานยินดีช่วยเสมอค่ะ'
+
+  ── Intent F1 per class ──
+    ✅  chat        F1=1.00  (TP=6 FP=0 FN=0)  n=6
+    ✅  info        F1=0.89  (TP=8 FP=0 FN=2)  n=10
+    ❌  navigate    F1=0.80  (TP=4 FP=2 FN=0)  n=4
+    ✅  farewell    F1=1.00  (TP=3 FP=0 FN=0)  n=3
+
+    ✅  Intent Accuracy = 91.3%  (target ≥ 90%)
+    ℹ️   Macro F1        = 0.92
+    ℹ️   RAG Route Acc   = 18/23 = 78.3%
+
+=================================================================
+  B. SLOT F1 — NAVIGATION DESTINATION
+=================================================================
+  ✅  expected='ห้องสมุด'  got='ห้องสมุด'
+  ❌  expected='ห้องน้ำ'  got='สอนคามบั'
+  ✅  expected='1201'  got='ห้อง 1201'
+  ✅  expected='โรงอาหาร'  got='โรงอาหาร'
+
+  ❌  Slot F1 = 0.75  (TP=3 FP=1 FN=1)  target ≥ 0.85
+
+=================================================================
+  C. LANGUAGE COMPLIANCE (L1–L8)
+=================================================================
+  ✅  L1_no_khrap                23/23 pass  (100%)
+  ✅  L2_no_cjk                  23/23 pass  (100%)
+  ✅  L3_no_eng_sent             23/23 pass  (100%)
+  ✅  L4_no_name_start           23/23 pass  (100%)
+  ✅  L5_max_2_sent              23/23 pass  (100%)
+  ✅  L6_no_male_pron            23/23 pass  (100%)
+  ❌  L7_no_chan_pronoun         20/23 pass  (87%)
+  ✅  L8_no_old_fallback         23/23 pass  (100%)
+
+  ❌  Overall language compliance  target = 100%
+
+=================================================================
+  D. OUT-OF-SCOPE REJECTION RATE
+=================================================================
+  Fixtures: 5
+
+  Input: ช่วยทำการบ้านให้หน่อย
+    ✅  intent='info'  dest=None
+         reply: 'ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  Input: ขอ wifi password หน่อย
+    ✅  intent='info'  dest=None
+         reply: 'ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  Input: ช่วยโทรหาอาจารย์ได้ไหม
+    ✅  intent='info'  dest=None
+         reply: 'ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  Input: ไปข้างนอกตึกได้ไหม
+    ✅  intent='info'  dest=None
+         reply: 'ไม่สามารถไปข้างนอกตึกได้ค่ะ'
+  Input: ช่วยแปลภาษาอังกฤษให้หน่อย
+    ✅  intent='info'  dest=None
+         reply: 'ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+
+  ✅  OOS Rejection Rate = 5/5 = 100%  (target ≥ 80%)
+
+=================================================================
+  E. TASK SUCCESS RATE (TSR)
+=================================================================
+  Score distribution:  full=1.0 × 18  partial=0.5 × 3  fail=0 × 2
+  ✅  TSR = 0.85  (target ≥ 0.80 for pilot deployment)
+
+=================================================================
+  SUMMARY
+=================================================================
+  Intent Accuracy : 91.3%   (target ≥ 90%)
+  Macro F1        : 0.92
+  Slot F1 (dest)  : 0.75    (target ≥ 0.85)
+  Lang Compliance : FAILED — see C above
+  OOS Rejection   : 100%       (target ≥ 80%)
+  TSR             : 0.85     (target ≥ 0.80)

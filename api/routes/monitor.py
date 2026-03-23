@@ -72,9 +72,10 @@ _HTML = """<!DOCTYPE html>
            font-size: 0.72rem; font-weight: bold; }
     .tag-registered   { background: #1a3a2a; color: #3fb950; }
     .tag-unregistered { background: #2a1a1a; color: #f85149; }
-    .tag-ok   { background: #1a2a3a; color: #58a6ff; }
-    .tag-skip { background: #2a2a1a; color: #e3b341; }
-    .tag-err  { background: #2a1a1a; color: #f85149; }
+    .tag-ok    { background: #1a2a3a; color: #58a6ff; }
+    .tag-skip  { background: #2a2a1a; color: #e3b341; }
+    .tag-err   { background: #2a1a1a; color: #f85149; }
+    .tag-noise { background: #1a1a2a; color: #6e7681; }
     .ts { color: #6e7681; font-size: 0.75rem; float: right; }
     .empty { color: #6e7681; text-align: center; padding: 40px; }
     #status { font-size: 0.75rem; color: #6e7681; margin-bottom: 12px; }
@@ -104,8 +105,9 @@ _HTML = """<!DOCTYPE html>
       html += '<div class="row"><span class="label">person</span><span class="value">' + (e.person_id||'') + ' ' +
               (e.is_registered ? tag('tag-registered','registered') : tag('tag-unregistered','unknown')) + '</span></div>';
 
-      if (e.stt_raw) {
-        html += '<div class="row"><span class="label">STT raw</span><span class="value">' + e.stt_raw + ' <span style="color:#6e7681">(conf ' + (e.stt_confidence||0).toFixed(2) + ')</span></span></div>';
+      if (e.stt_raw !== undefined) {
+        const sttDisplay = e.stt_raw ? e.stt_raw : '<span style="color:#6e7681">(empty)</span>';
+        html += '<div class="row"><span class="label">STT raw</span><span class="value">' + sttDisplay + '</span></div>';
       }
       if (e.corrected && e.corrected !== e.stt_raw) {
         html += '<div class="row"><span class="label">corrected</span><span class="value">' + e.corrected + '</span></div>';
@@ -139,7 +141,7 @@ _HTML = """<!DOCTYPE html>
           '</span></div>';
       }
       if (e.status) {
-        const cls2 = e.status === 'ok' ? 'tag-ok' : e.status === 'skipped' ? 'tag-skip' : 'tag-err';
+        const cls2 = e.status === 'ok' ? 'tag-ok' : e.status === 'noise' ? 'tag-noise' : e.status === 'skipped' ? 'tag-skip' : 'tag-err';
         html += '<div class="row"><span class="label">status</span><span class="value">' + tag(cls2, e.status) + '</span></div>';
       }
       if (e.errors && e.errors.length) {

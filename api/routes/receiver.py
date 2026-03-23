@@ -23,6 +23,7 @@ Both /detection and /greeting receive the same DetectionPayload:
 /activate   — PI 5 polls to check if robot should be in active (conversation) mode
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -34,6 +35,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from api.routes.monitor import log_event
 from api.schemas.receiver import ActivateResponse, DetectionPayload, GreetingPayload, STTResult
+from database import sqlite_client
 from database.mysql_client import fetch_student_by_id, fetch_student_by_nickname
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,7 @@ def _clean_name(person_id: str) -> str:
 
 
 def _get_or_create_session(person_id: str) -> dict:
+    """In-memory only — used for guest sessions and as a fast path."""
     if person_id not in _sessions:
         _sessions[person_id] = {
             "session_id":  str(uuid.uuid4()),
@@ -78,13 +81,51 @@ def _get_or_create_session(person_id: str) -> dict:
     return sess
 
 
-def _cleanup_expired_sessions(timeout_seconds: int) -> None:
-    """Remove sessions idle longer than timeout_seconds."""
+async def _restore_session(person_id: str, student_id: str, db_path: str) -> dict:
+    """
+    Get or create a session for a registered person.
+    If the session is already in memory (normal case), return it immediately.
+    If not (server restarted mid-conversation), look up the latest session from
+    SQLite by student_id and restore the conversation history from conversation_log.
+    """
+    if person_id in _sessions:
+        sess = _sessions[person_id]
+        sess["last_active"] = datetime.utcnow()
+        return sess
+
+    # Server restarted — try to recover session from SQLite
+    existing = await sqlite_client.get_latest_session(student_id, db_path)
+    if existing:
+        session_id = existing["session_id"]
+        turns = await sqlite_client.get_turns(session_id, limit=10, db_path=db_path)
+        history = [(t["user_text"], t["bot_reply"]) for t in turns]
+        logger.info(
+            "Restored session %s for %s — %d turns recovered from SQLite",
+            session_id, person_id, len(history),
+        )
+    else:
+        session_id = str(uuid.uuid4())
+        history = []
+
+    _sessions[person_id] = {
+        "session_id":  session_id,
+        "person_id":   person_id,
+        "history":     history,
+        "created_at":  datetime.utcnow(),
+        "last_active": datetime.utcnow(),
+    }
+    return _sessions[person_id]
+
+
+def _cleanup_expired_sessions(timeout_seconds: int, guest_timeout_seconds: int) -> None:
+    """Remove sessions idle longer than their respective timeout."""
     now = datetime.utcnow()
-    expired = [
-        pid for pid, sess in list(_sessions.items())
-        if (now - sess["last_active"]).total_seconds() > timeout_seconds
-    ]
+    expired = []
+    for pid, sess in list(_sessions.items()):
+        is_guest = pid.startswith("guest_") or pid == "unknown_guest"
+        limit = guest_timeout_seconds if is_guest else timeout_seconds
+        if (now - sess["last_active"]).total_seconds() > limit:
+            expired.append(pid)
     for pid in expired:
         sess = _sessions.pop(pid)
         logger.info(
@@ -108,10 +149,25 @@ async def on_greeting(payload: GreetingPayload, request: Request):
     app_state = request.app.state
     cooldown = app_state.settings["session"]["greeting_cooldown_seconds"]
 
-    # Skip unregistered or unknown persons
+    # Unknown / unregistered person — greet as visitor, no name/memory lookup
     if not payload.is_registered or payload.person_id == "Unknown":
-        logger.info("Greeting skipped for unregistered/unknown: %s", payload.person_id)
-        return {"status": "skipped"}
+        last = _last_greeting.get("__stranger__")
+        if last and (datetime.utcnow() - last).total_seconds() < cooldown:
+            logger.info("Stranger greeting skipped (cooldown)")
+            return {"status": "cooldown"}
+        _last_greeting["__stranger__"] = datetime.utcnow()
+        _active = 1
+        greeting_text = await app_state.greeting_bot.greet_stranger()
+        logger.info("Stranger greeted: %r", greeting_text[:60])
+        log_event({
+            "endpoint": "/greeting",
+            "person_id": payload.person_id,
+            "display_name": "ผู้มาเยือน",
+            "is_registered": False,
+            "reply_text": greeting_text,
+            "status": "stranger",
+        })
+        return {"status": "stranger", "greeting_text": greeting_text}
 
     last = _last_greeting.get(payload.person_id)
     if last and (datetime.utcnow() - last).total_seconds() < cooldown:
@@ -150,15 +206,33 @@ async def on_greeting(payload: GreetingPayload, request: Request):
         student_id = str(student_row.get("student_id", payload.person_id)) if student_row else payload.person_id
     if student_row:
         enroll = int(student_row.get("enrollment_year", datetime.utcnow().year))
-        student_year = min(max(datetime.utcnow().year - enroll + 1, 1), 4)
+        student_year = min(max(datetime.utcnow().year - enroll, 1), 4)
     else:
-        student_year = 1
+        # Derive from student_id prefix: first 2 digits = Thai Buddhist year (e.g. 65 → 2565 BE → 2022 CE)
+        try:
+            prefix = int(str(student_id)[:2])
+            enroll_ce = prefix + 1957   # 65→2022, 66→2023, 67→2024, 68→2025
+            student_year = min(max(datetime.utcnow().year - enroll_ce, 1), 4)
+        except Exception:
+            student_year = 1
+
+    # Create/restore session at greeting time so session_id is stable for the whole conversation
+    db_path = app_state.settings.get("sqlite", {}).get("db_path", "./database/metadata.db")
+    sess = await _restore_session(payload.person_id, student_id, db_path)
+    await sqlite_client.upsert_session(
+        session_id=sess["session_id"],
+        student_id=student_id,
+        student_name=clean_name,
+        db_path=db_path,
+    )
 
     greeting_text, tts_text = await app_state.greeting_bot.greet(
         student_name=clean_name,
         student_id=student_id,
         student_year=student_year,
     )
+    # Seed session history with greeting so the first /detection reply has context
+    sess["history"].append(("", greeting_text))
     logger.info("Greeted %s (year=%d): %r", payload.person_id, student_year, greeting_text[:60])
 
     log_event({
@@ -189,24 +263,105 @@ async def on_detection(payload: DetectionPayload, request: Request):
     # PI 5 goes INACTIVE after posting /detection — server must push active=1
     # after the full pipeline to re-enable it, except on farewell (active=0).
 
-    # Unknown / unregistered person — re-enable PI 5 immediately so it can listen again
-    if not payload.is_registered or payload.person_id == "Unknown":
-        _active = 0
+    # Noise gate — drop empty or near-empty STT (likely mic noise, not real speech)
+    _MIN_STT_CHARS = 3
+    if not payload.stt.text or len(payload.stt.text.strip()) < _MIN_STT_CHARS:
         await _push_active(1, pi5_url)
         log_event({
             "endpoint": "/detection",
             "person_id": payload.person_id,
-            "is_registered": False,
+            "is_registered": payload.is_registered,
             "stt_raw": payload.stt.text,
-            "status": "skipped",
+            "status": "noise",
         })
-        return ActivateResponse(active=0)
+        logger.debug("STT noise gate triggered for %s — text=%r", payload.person_id, payload.stt.text)
+        return ActivateResponse(active=1)
 
     _active = 1
-    _cleanup_expired_sessions(cfg["session"]["session_timeout_seconds"])
+    _cleanup_expired_sessions(
+        cfg["session"]["session_timeout_seconds"],
+        cfg["session"]["guest_session_timeout_seconds"],
+    )
+    db_path = cfg.get("sqlite", {}).get("db_path", "./database/metadata.db")
 
-    # Session
-    sess = _get_or_create_session(payload.person_id)
+    # Unknown / unregistered person — run full pipeline but skip MySQL, memory store
+    if not payload.is_registered or payload.person_id == "Unknown":
+        guest_key = f"guest_{payload.track_id}" if payload.track_id else "unknown_guest"
+        sess = _get_or_create_session(guest_key)
+        display_name = "ผู้มาเยือน"
+
+        t_start = time.perf_counter()
+
+        logger.info("▶ [1/3 grammar ] %s — %r", display_name, payload.stt.text)
+        t0 = time.perf_counter()
+        corrected = app_state.grammar_corrector.correct(payload.stt.text)
+        t_grammar = (time.perf_counter() - t0) * 1000
+        logger.info("✔ [1/3 grammar ] %.0fms — corrected=%r", t_grammar, corrected)
+
+        logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
+        t0 = time.perf_counter()
+        # ask() only — skip memory store for guests
+        response = app_state.chatbot.ask(
+            question=corrected,
+            session_id=sess["session_id"],
+            student_id="guest",
+            student_name=display_name,
+            student_year=1,
+            history=sess["history"],
+        )
+        t_llm = (time.perf_counter() - t0) * 1000
+        logger.info(
+            "✔ [2/3 llm     ] %.0fms — rag=%s  intent=%s  reply=%r",
+            t_llm, response.get("rag_collection", "?"), response.get("intent", "?"),
+            response.get("reply_text", "")[:60],
+        )
+
+        sess["history"].append((corrected, response["reply_text"]))
+        if len(sess["history"]) > cfg["session"]["max_history_turns"]:
+            sess["history"].pop(0)
+
+        # Log turn to SQLite for audit only (no Milvus memory store)
+        asyncio.create_task(sqlite_client.log_turn(
+            session_id=sess["session_id"],
+            user_text=corrected,
+            bot_reply=response["reply_text"],
+            intent=response.get("intent", "chat"),
+            student_id="guest",
+            db_path=db_path,
+        ))
+
+        logger.info("▶ [3/3 tts     ] %s — sending to PI 5", display_name)
+        t0 = time.perf_counter()
+        route_result = await app_state.intent_router.route(response)
+        t_tts = (time.perf_counter() - t0) * 1000
+        logger.info("✔ [3/3 tts     ] %.0fms — routed=%s", t_tts, route_result.get("routed_to", []))
+
+        t_total = (time.perf_counter() - t_start) * 1000
+        await _push_active(1, pi5_url)
+        log_event({
+            "endpoint": "/detection",
+            "person_id": payload.person_id,
+            "display_name": display_name,
+            "is_registered": False,
+            "stt_raw": payload.stt.text,
+            "corrected": corrected,
+            "rag_collection": response.get("rag_collection", ""),
+            "reply_text": response.get("reply_text", ""),
+            "intent": response.get("intent", ""),
+            "destination": response.get("destination"),
+            "routed_to": route_result.get("routed_to", []),
+            "timing_ms": {
+                "grammar": round(t_grammar),
+                "llm": round(t_llm),
+                "tts": round(t_tts),
+                "total": round(t_total),
+            },
+            "status": "guest",
+        })
+        return ActivateResponse(active=1)
+
+    # Session — restore from SQLite if server restarted mid-conversation
+    sess = await _restore_session(payload.person_id, payload.student_id or payload.person_id, db_path)
 
     # Resolve student info — cached in session to avoid repeated DB calls
     if "student_year" not in sess:
@@ -233,24 +388,36 @@ async def on_detection(payload: DetectionPayload, request: Request):
             sess["student_db_id"] = str(det_student_row.get("student_id", payload.person_id)) if det_student_row else payload.person_id
         if det_student_row:
             enroll = int(det_student_row.get("enrollment_year", datetime.utcnow().year))
-            sess["student_year"] = min(max(datetime.utcnow().year - enroll + 1, 1), 4)
+            sess["student_year"] = min(max(datetime.utcnow().year - enroll, 1), 4)
         else:
-            sess["student_year"] = 1
+            try:
+                prefix = int(str(payload.person_id)[:2])
+                enroll_ce = prefix + 1957
+                sess["student_year"] = min(max(datetime.utcnow().year - enroll_ce, 1), 4)
+            except Exception:
+                sess["student_year"] = 1
+
+        # Persist session to SQLite so it survives server restarts
+        asyncio.create_task(sqlite_client.upsert_session(
+            session_id=sess["session_id"],
+            student_id=sess["student_db_id"],
+            student_name=_clean_name(payload.thai_name) if payload.thai_name else _clean_name(payload.person_id),
+            db_path=db_path,
+        ))
 
     display_name = _clean_name(payload.thai_name) if payload.thai_name else _clean_name(payload.person_id)
 
     t_start = time.perf_counter()
 
     # 1. Grammar correction
+    logger.info("▶ [1/3 grammar ] %s — %r", display_name, payload.stt.text)
     t0 = time.perf_counter()
     corrected = app_state.grammar_corrector.correct(payload.stt.text)
     t_grammar = (time.perf_counter() - t0) * 1000
-    logger.info(
-        "Detection from %s — raw=%r  corrected=%r",
-        payload.person_id, payload.stt.text, corrected,
-    )
+    logger.info("✔ [1/3 grammar ] %.0fms — corrected=%r", t_grammar, corrected)
 
     # 2. RAG chatbot
+    logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
     t0 = time.perf_counter()
     response = await app_state.chatbot.ask_and_store(
         question=corrected,
@@ -261,6 +428,11 @@ async def on_detection(payload: DetectionPayload, request: Request):
         history=sess["history"],
     )
     t_llm = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "✔ [2/3 llm     ] %.0fms — rag=%s  intent=%s  reply=%r",
+        t_llm, response.get("rag_collection", "?"), response.get("intent", "?"),
+        response.get("reply_text", "")[:60],
+    )
 
     # Update short-term history
     sess["history"].append((corrected, response["reply_text"]))
@@ -268,14 +440,13 @@ async def on_detection(payload: DetectionPayload, request: Request):
         sess["history"].pop(0)
 
     # 3. Intent routing (TTS + ROS2 in parallel)
-    from mcp.tts_router import to_tts_ready
-    phoneme_text = to_tts_ready(response.get("reply_text", ""))
+    logger.info("▶ [3/3 tts     ] %s — sending to PI 5", display_name)
     t0 = time.perf_counter()
     route_result = await app_state.intent_router.route(response)
     t_tts = (time.perf_counter() - t0) * 1000
+    logger.info("✔ [3/3 tts     ] %.0fms — routed=%s", t_tts, route_result.get("routed_to", []))
 
     t_total = (time.perf_counter() - t_start) * 1000
-
     logger.info(
         "⏱  pipeline [%s] grammar=%.0fms  llm=%.0fms  tts=%.0fms  total=%.0fms",
         payload.person_id, t_grammar, t_llm, t_tts, t_total,
@@ -340,12 +511,13 @@ async def on_audio_detection(
 
     # Step 1 — Transcribe audio via sidecar
     wav_bytes = await audio.read()
+    logger.info("▶ [0/3 stt     ] %s — transcribing %d bytes via sidecar", person_id, len(wav_bytes))
     stt_text = await stt_transcribe(wav_bytes, sidecar_url=sidecar_url)
     if not stt_text:
         logger.warning("STT returned empty transcript for %s — treating as empty utterance", person_id)
         stt_text = ""
 
-    logger.info("Audio STT [%s]: %r", person_id, stt_text[:80])
+    logger.info("✔ [0/3 stt     ] %s — %r", person_id, stt_text[:80])
 
     # Step 2 — Build DetectionPayload and delegate to the existing pipeline
     fake_payload = DetectionPayload(

@@ -16,7 +16,7 @@ from typing import Dict, Optional
 import httpx
 
 from llm.typhoon_client import TyphoonClient
-from mcp.tts_router import to_tts_ready
+from mcp.tts_router import to_tts_ready, expand_for_tts
 from tts.text_sender import send_phoneme_text   # Option B default
 # from tts.kanom_than_player import send_wav    # Option A — uncomment to switch
 
@@ -51,8 +51,9 @@ class IntentRouter:
         reply_text  = chatbot_response.get("reply_text", "")
         destination = chatbot_response.get("destination")
 
-        # Typhoon2-Audio reads raw Thai natively — syllabification not needed
-        tts_text = reply_text if self.tts_engine == "typhoon_audio" else to_tts_ready(reply_text)
+        # Always expand English/numbers to Thai first, then syllabify for non-typhoon engines
+        expanded = expand_for_tts(reply_text)
+        tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
         routed_to = []
 
         if intent in ("chat", "info"):
@@ -65,9 +66,8 @@ class IntentRouter:
             routed_to.extend(["tts", "ros2_resume"])
 
         elif intent == "navigate":
-            confirm_text = f"ได้เลยค่ะ ตามหนูมาเลยนะค่ะ หนูจะพาไปที่ {destination or 'ปลายทาง'} ค่ะ"
-            tts_confirm = confirm_text if self.tts_engine == "typhoon_audio" else to_tts_ready(confirm_text)
-            asyncio.create_task(self._speak(tts_confirm))
+            # Use the LLM's reply_text for TTS — destination is for ROS2 only, not spoken
+            asyncio.create_task(self._speak(tts_text))
             asyncio.create_task(self._navigate("go_to", destination=destination))
             routed_to.extend(["tts", "ros2_navigate"])
 

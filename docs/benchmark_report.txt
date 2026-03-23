@@ -1,0 +1,87 @@
+KhanomTan Latency Benchmark — 2026-03-23 15:10
+
+
+=================================================================
+  0. SERVER HEALTH
+=================================================================
+  ✅  {'status': 'ok', 'service': 'KhanomTan AI Brain v2'}
+
+=================================================================
+  1. RUNNING 16 FIXTURES
+=================================================================
+  Wait per request: 8.0s   Student: ปาล์ม
+
+  [01/16] chat_history/greeting
+    grammar=     0ms  llm= 19026ms  tts=     0ms  total= 19027ms  intent='chat'
+    reply: 'สวัสดีค่ะ ยินดีช่วยเหลือค่ะ'
+  [02/16] chat_history/casual
+    grammar=   353ms  llm=  4237ms  tts=     0ms  total=  4591ms  intent='chat'
+    reply: 'ฉันเข้าใจค่ะ ถ้ามีอะไรให้ช่วยเหลือ บอกได้นะคะ'
+  [03/16] chat_history/identity
+    grammar=   346ms  llm=  4984ms  tts=     0ms  total=  5331ms  intent='chat'
+    reply: 'ฉันคือขนมทาน หุ่นยนต์บริการของมหาวิทยาลัยลาดกระบังค่ะ ยินดีช'
+  [04/16] chat_history/capabilities
+    grammar=   440ms  llm=  5624ms  tts=     0ms  total=  6065ms  intent='chat'
+    reply: 'ฉันสามารถสนทนาและตอบคำถามเกี่ยวกับม.ลาดกระบัง และนำทางภายในต'
+  [05/16] chat_history/farewell
+    grammar=   369ms  llm=  4512ms  tts=     0ms  total=  4881ms  intent='farewell'
+    reply: 'ลาก่อนค่ะ ถ้ามีอะไรให้ช่วยเหลือในอนาคต บอกได้นะคะ'
+  [06/16] uni_info/bathroom
+    grammar=   316ms  llm=  5461ms  tts=     0ms  total=  5779ms  intent='navigate'
+    reply: 'ตามหนูมาเลยค่ะ'
+  [07/16] uni_info/zone
+    grammar=   390ms  llm=  5884ms  tts=     0ms  total=  6274ms  intent='info'
+    reply: 'ตึก E-12 อยู่ใน Zone D ค่ะ'
+  [08/16] uni_info/canteen
+    grammar=   374ms  llm=  5714ms  tts=     0ms  total=  6089ms  intent='info'
+    reply: 'โรงอาหารอยู่ในตึก E-12 ค่ะ'
+  [09/16] uni_info/navigate
+    grammar=   416ms  llm=  5665ms  tts=     0ms  total=  6082ms  intent='navigate'
+    reply: 'ตามหนูมาเลยค่ะ'
+  [10/16] uni_info/navigate2
+    grammar=     0ms  llm=  5174ms  tts=     0ms  total=  5175ms  intent='navigate'
+    reply: 'ตามหนูมาเลยค่ะ'
+  [11/16] curriculum/credits
+    grammar=   743ms  llm=  6341ms  tts=     0ms  total=  7085ms  intent='info'
+    reply: 'หลักสูตร RAI ต้องเรียนรวมทั้งหมด 129 หน่วยกิตค่ะ'
+  [12/16] curriculum/year
+    grammar=   388ms  llm=  6266ms  tts=     0ms  total=  6655ms  intent='info'
+    reply: 'วิชา Computer Programming เรียนในปีหนึ่งค่ะ'
+  [13/16] curriculum/duration
+    grammar=     0ms  llm=  5154ms  tts=     0ms  total=  5155ms  intent='info'
+    reply: 'หลักสูตร RAI เรียน 4 ปีค่ะ'
+  [14/16] time_table/monday
+    grammar=   363ms  llm=  6241ms  tts=     0ms  total=  6605ms  intent='info'
+    reply: 'วันจันทร์มีวิชาอะไรบ้างค่ะ ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+  [15/16] time_table/subject_day
+    grammar=   388ms  llm=  6266ms  tts=     0ms  total=  6655ms  intent='info'
+    reply: 'วิชา Computer Programming เรียนในปีหนึ่งค่ะ'
+  [16/16] time_table/friday
+    grammar=   469ms  llm=  5766ms  tts=     0ms  total=  6235ms  intent='info'
+    reply: 'วันศุกร์มีวิชาอะไรบ้างค่ะ ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ'
+
+=================================================================
+  2. LATENCY BY RAG ROUTE  (ms)
+=================================================================
+  Route                             n     mean      p50      p95      p99
+  ---------------------------------------------------------------
+  ❌ chat_history                    5    7979ms    5331ms   19027ms   19027ms
+  ❌ uni_info                        5    5880ms    6082ms    6274ms    6274ms
+  ❌ curriculum                      3    6298ms    6655ms    7085ms    7085ms
+  ❌ time_table                      3    6498ms    6605ms    6655ms    6655ms
+
+=================================================================
+  3. LATENCY BY STAGE  (all fixtures, ms)
+=================================================================
+  Stage           n     mean      p50      p95      p99
+  --------------------------------------------------
+  ❌ grammar      13     412ms     388ms     743ms     743ms   target p50≤200ms
+  ❌ llm          16    6395ms    5714ms   19026ms   19026ms   target p50≤3000ms
+  ❌ total        16    6730ms    6089ms   19027ms   19027ms   target p50≤3000ms
+
+=================================================================
+  4. SUMMARY
+=================================================================
+  Fixtures run  : 16/16
+  TTFR p50      : 6089ms   ❌ ABOVE TARGET
+  TTFR p95      : 19027ms   ❌ ABOVE TARGET

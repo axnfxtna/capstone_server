@@ -167,44 +167,191 @@ Reference: `docs/design.md` sections 3.2–3.6.
 
 ---
 
-## Embedding Model Upgrade — BAAI/bge-m3 🔜 NEXT
+## Embedding Model Upgrade — BAAI/bge-m3 ✅ DONE (2026-03-23)
 
-Upgrade from `sentence-transformers/all-MiniLM-L6-v2` (384-dim, English-only) to `BAAI/bge-m3`
-(1024-dim, multilingual, state-of-the-art Thai support). Hardware (4× A100-SXM4-80GB) handles it easily.
+- [x] All configs updated (`settings.yaml`, `configs.yaml`, `milvus_client.py`)
+- [x] All 4 collections dropped and re-ingested at 1024-dim
+  - `curriculum` 516 chunks, `time_table` 128 rows (scores 0.30→0.60), `uni_info` 4 chunks, `conversation_memory` fresh
+  - `chat_history` dropped permanently — legacy, never queried
+- [x] `kmitl_map_info_thai.txt` created — 52 KMITL buildings (Zone A–D) extracted from campus map images and ingested into `uni_info`
+- [x] `tools/reingest_curriculum.py`, `tools/reingest_uni_info.py`, `tools/drop_old_collections.py` written
 
-### Why bge-m3 over paraphrase-multilingual-MiniLM-L12-v2
-- bge-m3 supports 100+ languages with significantly better Thai semantic quality
-- 1024-dim vs 384-dim — richer representation for Thai words and phrases
-- Current RAG scores for `time_table` queries are ~0.28-0.33 — bge-m3 expected to improve noticeably
-- All dataset files are available locally for re-ingestion
+## Phase 2.10 — Pipeline Fixes ✅ DONE (2026-03-23)
 
-### Scope of change
-| Collection | Dim change | Action |
-|---|---|---|
-| `curriculum` | 384 → 1024 | Drop + re-embed 516 PDF chunks |
-| `time_table` | 384 → 1024 | Drop + re-embed via `reingest_timetable.py` (update EMB_MODEL + EMB_DIM) |
-| `uni_info` | 768 → 1024 | Drop + re-embed 7 docs (currently padded/mismatched anyway) |
-| `conversation_memory` | 384 → 1024 | Drop + recreate (rebuilds from new conversations) |
-| `chat_history` | 384 → 1024 | Drop + recreate (legacy collection, not actively written by server) |
+- [x] `uni_info` RAG routing fixed — keyword block added to `_ROUTE_KEYWORDS` in `llm_chatbot.py`
+- [x] Robot self-location injected into system prompt — 12th floor of E-12, Zone D
+- [x] `pipeline_test.py` rewritten — 39/39 checks passing, covers all RAG routes + intent types + language rules
+- [x] Stage-by-stage `▶`/`✔` logging added to pipeline in `receiver.py`
+- [x] Duplicate log line bug fixed — `force=True` in `logging.basicConfig()`
 
-### Implementation steps
-1. **`config/settings.yaml`** — update `embedding_model` + `embedding_dim`:
-   ```yaml
-   embedding_model: "BAAI/bge-m3"
-   embedding_dim: 1024
-   ```
-2. **`database/configs/configs.yaml`** — update `models.text_embedding.name` + `dim`
-3. **`vector_db/milvus_client.py`** — update `MEMORY_DIM = 1024`; `ensure_memory_collection(dim=1024)`
-4. **`tools/reingest_timetable.py`** — change `EMB_MODEL` + `EMB_DIM = 1024`; re-run
-5. **Write `tools/reingest_curriculum.py`** — reads PDFs from `database/dataset/curriculum/`, chunks, embeds, inserts into `curriculum` (drop + recreate at 1024-dim)
-6. **Write `tools/reingest_uni_info.py`** — re-embeds the 7 uni_info docs at 1024-dim
-7. **Drop `conversation_memory` + `chat_history`** — recreated at 1024-dim on server restart
-8. **Restart server** — `ensure_memory_collection()` recreates at 1024-dim automatically
+---
 
-### Dataset files available
-- `database/dataset/curriculum/` — 4 PDFs (RAI Curriculum gen 61, 63, 68; AI Engineering gen 68)
-- `database/dataset/time_table/` — 5 XLSXs (RAI 1-65, 1-66, 1-67, 2-65, 2-66)
-- `database/dataset/uni_info/` — need to verify content
+## Phase 2.11 — Unknown Person + Session Fixes ✅ DONE (2026-03-23)
+
+### Unknown Person Interaction
+- [x] `/greeting` unknown path — calls `greet_stranger()` instead of returning skipped
+- [x] `greet_stranger()` added to `GreetingBot` — visitor prompt with robot limitations, 1-sentence cap, `หนู` pronoun enforced
+- [x] `/detection` unknown path — full pipeline via `chatbot.ask()` (no memory store), session keyed by `track_id`
+- [x] Guest sessions tracked in-memory with 5-min timeout (`guest_session_timeout_seconds: 300`)
+- [x] Guest turns logged to SQLite for audit; Milvus memory store skipped
+- [x] Stranger greeting cooldown using `__stranger__` key in `_last_greeting`
+
+### Session Persistence (Restart Recovery)
+- [x] `get_latest_session(student_id)` added to `sqlite_client.py`
+- [x] `_restore_session()` async helper — checks memory first, falls back to SQLite on restart
+- [x] `upsert_session()` wired into `/greeting` and `/detection` for registered persons
+- [x] `get_turns(session_id)` used to restore history after server restart
+- [x] Registered session timeout raised to 30 min (`session_timeout_seconds: 1800`)
+- [x] Per-role cleanup: guest sessions expire at 5 min, registered at 30 min
+
+### Bug Fixes
+- [x] Navigate intent — TTS now uses LLM `reply_text` directly; destination no longer injected into speech
+- [x] `llm_chatbot.py` navigate intent description updated — LLM told not to repeat destination in `reply_text`
+- [x] `enforce_female_particle()` extended — replaces `ข้าพเจ้า` → `หนู`, `ดิฉัน` → `หนู`, `ผม` → `หนู`
+- [x] Grammar corrector — strips `"Output:"` prefix if LLM mimics few-shot format
+- [x] STT noise gate — drops inputs < 3 chars; shows `noise` tag in monitor
+- [x] Monitor — STT raw always shown; displays `(empty)` in grey when blank
+- [x] `asyncio` import added to `receiver.py`
+
+### TTS English/Number Expansion
+- [x] `expand_for_tts()` added to `tts_router.py` — translates English letters, acronyms, and numbers to Thai words before TTS
+- [x] E-12 → อี สิบสอง | KMITL → เค เอ็ม ไอ ที แอล | Zone D → โซน ดี | 3 → สาม
+- [x] 4-digit numbers read digit-by-digit (room codes): 1201 → หนึ่ง สอง ศูนย์ หนึ่ง
+- [x] `expand_for_tts()` wired into `intent_router.py` and `greeting_bot.py` for all TTS engines
+- [x] Fixed `num_to_thaiword` function name (pythainlp 3.1.1)
+
+### Greeting Quality + Fallback Phrases ✅ DONE (2026-03-23)
+- [x] **Greeting length cap** — `max_tokens` 128 → 64 for `greet()` and `greet_stranger()`; constraint updated with concrete short example
+- [x] **Natural questions** — banned `"มีความสุขไหม"` (robotic); replaced with open-ended examples: `"เป็นยังไงบ้างคะ"`, `"ช่วงนี้เป็นไงบ้างคะ"`, `"วันนี้เหนื่อยไหมคะ"`
+- [x] **Stranger greeting shortened** — example trimmed to single clause; capability dump banned in prompt
+- [x] **Don't-know fallback** — `"ขอโทษค่ะ ไม่ทราบค่ะ"` → `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"`
+- [x] **Don't-understand fallback** — `"ขออภัยค่ะ ไม่เข้าใจคำถาม..."` → `"รบกวนพูดใหม่อีกทีได้มั้ยคะ"`
+- [x] **Student year off-by-one fixed** — formula `current_year - enrollment_year + 1` → `current_year - enrollment_year`; 65→4th, 66→3rd, 67→2nd, 68→1st all correct
+- [x] **ID-prefix year fallback** — derives year from student_id first 2 digits (Thai BE short form) when MySQL has no row
+
+---
+
+## Phase 5 — ROS2 Navigation Integration 🔜 NOT STARTED
+
+The server already sends `POST /navigation` to PI 5 with `{ "cmd", "destination?" }`.
+The missing piece is the **PI 5 / ROS2 side**: receiving that call and actually driving the robot.
+
+### 5.1 PI 5 `/navigation` endpoint (Teammate B)
+- [ ] Confirm endpoint is live and accepts `{ "cmd": str, "destination": str? }`
+- [ ] `stop_roaming` → halts autonomous roaming behaviour
+- [ ] `resume_roaming` → restarts autonomous roaming (on farewell)
+- [ ] `go_to` + `destination` → translates Thai destination name → ROS2 nav goal
+
+### 5.2 ROS2 Nav2 goal publishing
+- [ ] Destination name → map coordinate lookup table (e.g. `"ห้องสมุด"` → `(x, y, θ)`)
+- [ ] Publish `geometry_msgs/PoseStamped` or call Nav2 `NavigateToPose` action
+- [ ] Handle goal rejection / unreachable destination — send error reply back to server or speak fallback
+
+### 5.3 End-to-end navigation test
+- [ ] Ask robot `"พาฉันไปห้องสมุด"` → server routes → PI 5 `/navigation` → robot moves ✅
+- [ ] Ask robot `"พาฉันไปห้อง 12-01"` → room-number destination resolves correctly
+- [ ] Farewell → `resume_roaming` → robot resumes patrolling
+
+---
+
+## Phase 6 — Robot Emotion / Expression Frontend 🔜 NOT STARTED
+
+A display (screen or LED matrix on the robot) shows the robot's emotional state in real time,
+synced with the pipeline state so the robot looks alive and responsive.
+
+### 6.1 Emotion state model
+- [ ] Define emotion states: `idle` / `listening` / `thinking` / `speaking` / `navigating` / `happy` / `confused`
+- [ ] Map pipeline events → emotion states:
+  - Greeting received → `happy`
+  - STT received, waiting for LLM → `thinking`
+  - TTS playing → `speaking`
+  - Navigate intent → `navigating`
+  - Low-confidence STT fallback → `confused`
+  - Session expired / farewell → `idle`
+
+### 6.2 Server-side emotion event API
+- [ ] Add `emotion` field to monitor log events (already POSTed to `/events`)
+- [ ] Add `GET /emotion` endpoint → `{ "state": str, "updated_at": str }` (current emotion)
+- [ ] OR: push via WebSocket / SSE so the display reacts in real time without polling
+
+### 6.3 Frontend display (on robot or external screen)
+- [ ] Decide display target: robot-mounted screen (HDMI/SPI) vs. wall monitor vs. tablet
+- [ ] Implement emotion renderer: animated face / icon set for each state
+  - Option A: HTML/JS page polls `GET /emotion` every 500ms — fast to build
+  - Option B: WebSocket push from server — lower latency, more complex
+- [ ] Integrate with `/monitor` dashboard or build a separate `/face` route
+
+### 6.4 Sync with audio
+- [ ] Emotion switches to `speaking` exactly when TTS starts (not when LLM finishes)
+- [ ] Emotion returns to `listening` when TTS WAV delivery completes (on `/audio_play` 200 OK)
+
+---
+
+## Prompt Tuning v2 ✅ DONE (2026-03-23)
+
+### Chatbot system prompt (`llm/typhoon_client.py`)
+- [x] Day/time awareness injected every turn — `วันจันทร์ เวลา 16:13 น.` (UTC+7 corrected)
+- [x] `ตึกโหล` → `ตึกสิบสอง` throughout all prompts (easier TTS pronunciation)
+- [x] Over-helping fix — unknown answer now replies `"ขอโทษค่ะ ไม่ทราบค่ะ"` with no extra suggestions
+- [x] `enforce_female_particle()` extended — `ข้าพเจ้า` → `หนู`, `ดิฉัน` → `หนู`, `ผม` → `หนู`
+
+### Greeting bot (`mcp/greeting_bot.py`)
+- [x] ปี 4 tone changed — `คุยแบบเป็นกันเองและให้กำลังใจที่ใกล้เรียนจบ` (removed formal ว่าที่บัณฑิต)
+- [x] Greeting length capped — `ห้ามเกิน 1 ประโยคโดยเด็ดขาด` + example anchored in prompt
+- [x] `ห้ามพูดถึงความสามารถของตัวเองในการทักทาย` — stops robot from padding with capability description
+- [x] UTC+7 fix applied to `_get_time_of_day()` (was reading UTC, now reads Thai time)
+- [x] Stranger greeting prompt tightened — `หนู` pronoun enforced, 1-sentence cap, robot limitations included
+- [x] Greeting seeded into session history — `sess["history"].append(("", greeting_text))` so chatbot has context for first reply
+- [x] `llm_chatbot.py` history formatter — skips empty user turn so greeting renders as bot-only opening line
+
+### Grammar corrector (`mcp/grammar_corrector.py`)
+- [x] Strips `"Output:"` prefix if LLM mimics few-shot format
+
+### TTS (`mcp/tts_router.py`)
+- [x] `expand_for_tts()` — English letters/acronyms/numbers → Thai words before TTS
+- [x] 4-digit numbers read digit-by-digit (room codes): `1201` → `หนึ่ง สอง ศูนย์ หนึ่ง`
+- [x] Fixed `num_to_thaiword` function name (pythainlp 3.1.1)
+- [x] Wired into `intent_router.py` and `greeting_bot.py` for all TTS engines
+
+### Navigate intent fix (`mcp/intent_router.py`)
+- [x] TTS now uses LLM `reply_text` directly — destination no longer spoken by intent_router
+- [x] `llm_chatbot.py` navigate description updated — LLM told not to repeat destination in reply
+
+### Pipeline gates (`api/routes/receiver.py`)
+- [x] STT noise gate — drops inputs < 3 chars
+- [x] Monitor shows `(empty)` in grey when STT raw is blank
+- [x] `noise` status tag added to monitor
+
+---
+
+## Prompt Tuning v2 🔜 NEXT
+
+Second pass on all LLM prompts, informed by real conversation observations since v1.
+Goal: tighter, more natural Thai replies; better RAG answer quality; fewer edge-case failures.
+
+### What to revisit (per component)
+
+**`llm_chatbot` system prompt**
+- [ ] Review real reply samples from `conversation_memory` — identify recurring awkward patterns
+- [ ] Tighten the 2-sentence cap: enforce it more strictly or adjust for complex info queries
+- [ ] Improve out-of-scope denial phrasing — current version can sound too abrupt
+- [ ] Review how the robot handles follow-up questions ("แล้ว...ล่ะ", "อีกอย่าง...")
+
+**`greeting_bot` prompt**
+- [ ] Review greeting variety — does the LLM repeat the same opener across sessions?
+- [ ] Test memory injection quality: does the robot reference past conversations naturally?
+- [ ] Tune year-tone mapping — ปี 4 "ว่าที่บัณฑิต" tone should feel warm, not just congratulatory
+
+**`grammar_corrector` prompt**
+- [ ] Collect 20 STT inputs where the corrector changed something it shouldn't
+- [ ] Add more targeted few-shot counter-examples based on observed mis-corrections
+- [ ] Consider expanding the < 15 char skip threshold if short queries are being altered
+
+**`memory_manager` summarizer**
+- [ ] Review stored summaries in `conversation_memory` — are they specific enough for retrieval?
+- [ ] Test if a summary from a navigation turn retrieves correctly when the student later asks "ไปที่เดิมได้ไหม"
+
+### After prompt v2 → run `pipeline_test.py` again to confirm all 39 checks still pass
 
 ---
 
@@ -220,31 +367,278 @@ Upgrade from `sentence-transformers/all-MiniLM-L6-v2` (384-dim, English-only) to
 
 ---
 
-## Phase 4 — Performance Benchmarking & Technical Report
+## Phase 4 — Real-World Test Suite & Technical Report
 
-### 4.1 Timing instrumentation
-- [ ] Add `time.perf_counter()` around each stage in `receiver.py` `/detection` handler
-- [ ] Log per-stage durations as structured JSON: `{ session_id, stage, duration_ms, timestamp }`
-- [ ] Stages to instrument: grammar correction, RAG embed, Milvus search, LLM answer, intent route, TTS send
+### 4.1 Timing instrumentation ✅ DONE (2026-03-23)
+- [x] `time.perf_counter()` wraps each stage in `receiver.py` `/detection` handler
+- [x] Per-stage ms logged: grammar / llm / tts / total — visible in server console + `/events`
+- [x] Stage progress logs: `▶`/`✔` lines show each stage starting and finishing in real time
 
-### 4.2 Benchmark harness (`tools/benchmark.py`)
-- [ ] Replay 50 fixed `DetectionPayload` fixtures through live server
-- [ ] Cover all RAG routes (chat_history / mysql_students / time_table / curriculum / uni_info)
-- [ ] Cover all intents (chat / info / navigate / farewell)
-- [ ] Cover high-conf (grammar skip) vs low-conf (full LLM) requests
-- [ ] Output mean / p50 / p95 / p99 latency per stage
+---
 
-### 4.3 Accuracy evaluation (`tools/eval_accuracy.py`)
-- [ ] Grammar corrector: 20 noisy STT strings → score corrected vs hand-labelled expected
-- [ ] RAG routing: 20 questions with known correct collection → count hits
-- [ ] Intent router: 20 chatbot responses with known intent → count correct predictions
+### 4.2 Greeting Scenarios
+Test that the robot greets correctly for every person type and situation.
 
-### 4.4 Technical report (`docs/technical_report.md`)
-- [ ] System architecture description
-- [ ] Per-component accuracy table (from 4.3)
-- [ ] End-to-end latency breakdown table (from 4.2)
-- [ ] Grammar skip latency delta: skipped vs full LLM correction
-- [ ] TTS Option A vs B latency delta (once Option A active)
+| # | Scenario | Expected behaviour |
+|---|----------|--------------------|
+| G1 | Registered student — first ever visit (no memory) | Short warm greeting by name, open-ended question |
+| G2 | Registered student — returning (has Milvus memory) | Greeting references a past topic naturally, 1 sentence |
+| G3 | Unknown visitor / stranger | "สวัสดีตอน[เวลา]ค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ" — no name, no capability dump |
+| G4 | Same registered student within cooldown window | `cooldown` status returned, no duplicate greeting |
+| G5 | Same stranger within cooldown window | `cooldown` status returned |
+| G6 | ปี 1 student | Welcoming, friendly elder-sister tone |
+| G7 | ปี 2 student | Encouraging, asks about challenges in harder subjects |
+| G8 | ปี 3 student | Caring tone, asks about internship readiness |
+| G9 | ปี 4 student | Casual, encouraging tone about graduating soon |
+| G10 | PI 5 sends `student_id` directly (bypasses nickname lookup) | Same quality greeting without MySQL nickname fallback |
+
+---
+
+### 4.3 University Information Queries (uni_info RAG)
+Student asks about places, buildings, or facilities on campus.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| U1 | "ห้องน้ำอยู่ที่ไหนคะ" | Answers with floor/location info from uni_info |
+| U2 | "โรงอาหารอยู่ตึกไหน" | Returns correct building name |
+| U3 | "ตึก E-12 อยู่โซนไหน" | "โซน D" from uni_info |
+| U4 | "ห้องสมุดอยู่ที่ไหน" | Correct location, concise ≤ 2 sentences |
+| U5 | "มีสระว่ายน้ำไหม" | Answers from campus facilities data |
+| U6 | "HM building คืออะไร" | Returns faculty/building description |
+| U7 | "ECC อยู่ที่ไหน" | Returns correct zone/location |
+| U8 | "ที่จอดรถอยู่ตรงไหน" | Returns parking info if in dataset, otherwise `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"` |
+
+---
+
+### 4.4 Curriculum Queries (curriculum RAG)
+Student asks about courses, credits, or programme structure.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| C1 | "หลักสูตร RAI มีกี่หน่วยกิต" | Returns total credits from curriculum data |
+| C2 | "วิชา AI มีอะไรบ้าง" | Lists AI-related subjects |
+| C3 | "วิชา Programming เรียนปีไหน" | Returns correct year from curriculum |
+| C4 | "หน่วยกิตวิชาเลือกคือกี่หน่วย" | Returns elective credit info |
+| C5 | "คณะนี้มีวิชา robotics ไหม" | Confirms and describes relevant courses |
+| C6 | "เรียนกี่ปี" | Returns programme duration |
+| C7 | "วิชาบังคับมีกี่วิชา" | Returns count from curriculum data |
+
+---
+
+### 4.5 Timetable Queries (time_table RAG + MySQL)
+Student asks about their class schedule or exam timetable.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| T1 | "วันจันทร์มีวิชาอะไรบ้าง" | Returns Monday schedule correctly |
+| T2 | "วิชา Programming เรียนวันไหน กี่โมง" | Returns day + time from timetable |
+| T3 | "ตารางสอบมีไหม" | Returns exam schedule if in dataset |
+| T4 | "คาบบ่ายวันศุกร์มีอะไร" | Returns afternoon Friday classes |
+| T5 | "เรียนกี่โมงถึงกี่โมง" | Returns time range for a given day |
+| T6 | "วันนี้[วันจริง]มีเรียนไหม" | Day-awareness test — uses injected current day correctly |
+
+---
+
+### 4.6 Navigation Requests (navigate intent)
+Student asks the robot to take them somewhere in E-12 building.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| N1 | "พาฉันไปห้องสมุดหน่อย" | intent=navigate, short invitation reply ("ตามหนูมาเลยค่ะ"), PI 5 `/navigation` called |
+| N2 | "อยากไปห้อง 1201" | Room code spoken digit-by-digit in TTS, navigation command sent |
+| N3 | "ไปห้องน้ำได้ไหม" | Same navigate flow |
+| N4 | "พาไปที่ชั้น 12 ได้มั้ย" | Navigate to floor |
+| N5 | "ไปที่ไหนก็ได้" | Robot asks for clarification or picks a sensible default |
+| N6 | Navigation to place outside E-12 (e.g. "พาไปโรงพยาบาล") | Politely declines, explains it can only navigate inside E-12 |
+| N7 | Farewell after navigation ("ขอบคุณ ไปเองได้แล้ว") | intent=farewell, `resume_roaming` command sent to PI 5 |
+
+---
+
+### 4.7 Casual Conversation (chat intent)
+Student chats casually — no RAG needed, robot uses memory + persona.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| CH1 | "สวัสดีค่ะ" | Friendly reciprocal greeting, no RAG call |
+| CH2 | "วันนี้เหนื่อยมาก" | Empathetic short reply, no over-advising |
+| CH3 | "ขนมทานคือใคร" | Short self-introduction (name + location + 2 capabilities only) |
+| CH4 | "ทำอะไรได้บ้าง" | Lists only 2 capabilities: Q&A and E-12 navigation |
+| CH5 | "ขอบคุณนะ" | Warm short reply using ค่ะ |
+| CH6 | "ครั้งที่แล้วเราคุยอะไรกัน" | Retrieves Milvus memory and references it naturally |
+| CH7 | "เป็นยังไงบ้าง" | Short casual reply in persona |
+| CH8 | Multi-turn follow-up "แล้ว...ล่ะ" | Uses session history context, doesn't lose track of topic |
+
+---
+
+### 4.8 Out-of-Scope Requests
+Robot must decline gracefully without being rude.
+
+| # | Input | Expected behaviour |
+|---|-------|--------------------|
+| OS1 | "ช่วยทำการบ้านให้หน่อย" | Polite decline, states scope |
+| OS2 | "ขอ wifi password หน่อย" | Polite decline |
+| OS3 | "ช่วยโทรหาอาจารย์ได้ไหม" | Polite decline |
+| OS4 | "แปลภาษาอังกฤษให้หน่อย" | Polite decline |
+| OS5 | "รู้จัก ChatGPT ไหม" | Short casual answer, doesn't go off-topic |
+| OS6 | "ไปข้างนอกตึกได้ไหม" | Explains navigation is E-12 only |
+
+---
+
+### 4.9 Language & Persona Compliance
+Every response must pass all of these regardless of input.
+
+| # | Rule | Check method |
+|---|------|--------------|
+| L1 | All replies use `ค่ะ`, never `ครับ` | `assert "ครับ" not in reply` |
+| L2 | No CJK characters in reply | regex check |
+| L3 | No English sentences (only proper nouns allowed) | regex check |
+| L4 | Reply does not start with student's name | `assert not reply.startswith(student_name)` |
+| L5 | Reply ≤ 2 sentences | count Thai sentence-end particles |
+| L6 | No `ผม`, `ดิฉัน`, `ข้าพเจ้า` in reply | string check |
+| L7 | Robot refers to itself as `หนู` or `ขนมทาน` | string check |
+| L8 | Room codes spoken digit-by-digit in TTS text | check `tts_text` field in response |
+
+---
+
+### 4.10 Edge Cases & Failure Modes
+
+| # | Scenario | Expected behaviour |
+|---|----------|--------------------|
+| E1 | STT returns < 3 chars (noise) | Dropped silently, `status: noise` in monitor |
+| E2 | STT returns empty string | Dropped, `(empty)` shown in monitor |
+| E3 | LLM returns malformed JSON | `_FALLBACK_RESPONSE` used: `"รบกวนพูดใหม่อีกทีได้มั้ยคะ"` |
+| E4 | Milvus unavailable during RAG search | Empty context passed to LLM, no crash |
+| E5 | MySQL unavailable during student lookup | Year defaults to ID-prefix derivation, no crash |
+| E6 | PI 5 TTS endpoint times out | `asyncio.create_task` swallows error, pipeline still returns response |
+| E7 | Student speaks English ("where is the library") | Robot answers in Thai regardless |
+| E8 | Very short reply ("โอเค", "ค่ะ") | Treated as casual chat, no RAG, graceful short response |
+| E9 | Same question twice in a row | Second answer shows session history context |
+| E10 | Student session idle > 30 min | Session expired and cleaned up; next event starts fresh |
+| E11 | Guest session idle > 5 min | Guest session expired; new guest session on next event |
+| E12 | Server restart mid-conversation | `_restore_session()` rebuilds history from SQLite |
+
+---
+
+### 4.11 Latency Benchmark (`tools/benchmark.py`)
+
+Replay all scenario fixtures above through the live server and measure pipeline timing.
+
+**Metric: TTFR (Time to First Response)**
+```
+TTFR = time from end of user utterance → start of robot audio output
+```
+Perceptual thresholds for a physical robot: < 500ms feels instant, < 1.5s acceptable, > 2s feels broken.
+
+**Per-stage latency breakdown** (already instrumented):
+```
+grammar_ms  |  llm_ms  |  tts_ms  |  total_ms
+```
+
+| Stage | Target | Notes |
+|-------|--------|-------|
+| Grammar correction | < 200ms | 8B model; skipped for < 15 chars |
+| RAG + LLM (chat_history route) | < 2s | No Milvus call |
+| RAG + LLM (Milvus route) | < 3s | Vector search + 70B model |
+| TTS synthesis | < 800ms | RTF 0.19x confirmed |
+| **TTFR total (p50)** | **< 3s** | Acceptable for lobby robot |
+| **TTFR total (p95)** | **< 5s** | Tail latency bound |
+
+**Benchmark runs:**
+- [ ] Run all G/U/C/T/N/CH/OS/E fixtures (sections 4.2–4.10)
+- [ ] Report mean / p50 / p95 / p99 per stage and per route
+- [ ] Compare registered (MySQL lookup) vs unknown (no DB call) latency
+- [ ] Compare Milvus routes vs chat_history (no Milvus) latency
+
+---
+
+### 4.12 Accuracy Evaluation (`tools/eval_accuracy.py`)
+
+#### A. STT — Character Error Rate (CER)
+**CER is the correct metric for Thai** (no word boundaries; WER is tokenizer-dependent and misleading).
+```
+CER = (substitutions + deletions + insertions) / total_reference_characters
+```
+- [ ] Record 30 real utterances from the robot's microphone in E-12 lobby conditions
+- [ ] Manually transcribe each as ground truth
+- [ ] Compute CER against Typhoon2-Audio sidecar output
+- [ ] **Target: CER < 20%** in ambient lobby noise (< 15% in quiet)
+- [ ] Also report WER (using PyThaiNLP `deepcut` tokenizer) for cross-model comparison
+
+#### B. Intent Classification — Accuracy + F1 per class
+```
+Intent Accuracy = correct_predictions / total_utterances
+F1 per class = 2 × (Precision × Recall) / (Precision + Recall)
+```
+- [ ] Label 50 test utterances with ground-truth intent (chat / info / navigate / farewell)
+- [ ] Run through live server, compare `intent` field in response
+- [ ] Report accuracy + F1 per class (navigate and farewell are rare → F1 matters more than accuracy)
+- [ ] **Target: Intent Accuracy > 90%, F1 per class > 0.85**
+
+#### C. Slot Filling — Destination F1 (navigate intent only)
+```
+Slot F1 = 2 × (Precision × Recall) / (Precision + Recall)
+Precision = correctly extracted destinations / all predicted destinations
+Recall    = correctly extracted destinations / all true destinations
+```
+- [ ] Test 15 navigation requests with known Thai destination ground truth
+- [ ] Compare `destination` field in response vs expected
+- [ ] **Target: Slot F1 > 0.85**
+
+#### D. RAG Quality — RAGAS Metrics
+Standard RAG evaluation framework. Scores in [0, 1], higher is better.
+
+**Faithfulness** — are all claims in the answer supported by retrieved context? (hallucination guard)
+```
+Faithfulness = claims_in_answer_supported_by_context / total_claims_in_answer
+```
+
+**Context Recall** — does the retrieved context contain enough info to answer the question?
+```
+Context Recall = ground_truth_claims_found_in_context / total_ground_truth_claims
+```
+
+- [ ] Build 30 QA pairs with ground-truth answers for uni_info + curriculum + time_table routes
+- [ ] Run through RAG pipeline, collect (question, context, answer) triples
+- [ ] Score with RAGAS library or LLM-as-judge equivalent
+- [ ] **Target: Faithfulness > 0.80, Context Recall > 0.75**
+
+#### E. Task Success Rate (TSR) — Primary End-to-End Metric
+**TSR is the most important metric for a service robot.**
+```
+TSR = tasks_completed_successfully / total_tasks_attempted
+```
+A "task" = one user interaction episode; success = user's stated goal was fulfilled.
+
+- [ ] Run 30 end-to-end scripted interactions covering all scenario groups (4.2–4.9)
+- [ ] Score each: 1 (fully successful), 0.5 (partial), 0 (failed/abandoned)
+- [ ] **Target: TSR > 0.80** for pilot deployment (> 0.90 for unsupervised operation)
+
+#### F. Language Compliance — Automated Checks
+Run these assertions across all 50+ test responses:
+
+| Check | Rule | Target |
+|-------|------|--------|
+| L1 | `"ครับ" not in reply` | 100% |
+| L2 | No CJK characters (regex) | 100% |
+| L3 | No full English sentences (regex) | 100% |
+| L4 | Reply does not start with student name | 100% |
+| L5 | Reply ≤ 2 Thai sentences | 100% |
+| L6 | No `ผม`, `ดิฉัน`, `ข้าพเจ้า` | 100% |
+| L7 | TTS text: room codes are digit-by-digit | 100% |
+| L8 | Fallback text is `รบกวนพูดใหม่อีกทีได้มั้ยคะ` (not old phrase) | 100% |
+
+---
+
+### 4.13 Technical Report (`docs/technical_report.md`)
+- [ ] System architecture overview (pipeline stages, models, data stores)
+- [ ] Evaluation methodology — how each metric was measured
+- [ ] STT performance table: CER / WER under quiet vs. lobby noise conditions
+- [ ] Intent classification table: Accuracy + F1 per class
+- [ ] RAG quality table: Faithfulness + Context Recall per collection
+- [ ] Latency breakdown table: per-stage mean/p50/p95 per route
+- [ ] Task Success Rate: score distribution across scenario groups
+- [ ] Language compliance: pass rate per rule
+- [ ] Failure analysis: top-3 failure modes observed
 - [ ] Known limitations and proposed improvements
 
 ---

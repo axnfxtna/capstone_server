@@ -52,7 +52,7 @@ _ROUTE_KEYWORDS: Dict[str, List[str]] = {
         "มู้ด", "รู้สึก", "อารมณ์",
     ],
     "mysql_students": [
-        "นักศึกษา", "อีเมล", "นศ", "รหัสนักศึกษา",
+        "นักศึกษา", "อีเมล", "รหัสนักศึกษา",
         "สมาชิก", "ใครบ้าง", "คนไหน", "รุ่น",
         "student", "email",
     ],
@@ -61,10 +61,25 @@ _ROUTE_KEYWORDS: Dict[str, List[str]] = {
         "เวลาเรียน", "คาบเรียน", "วันเรียน",
         "วันไหน", "เวลาไหน", "กี่โมง",
         "exam", "schedule", "class", "สอบ", "timetable",
+        # Thai day names — "วันจันทร์มีวิชาอะไร" should route here, not curriculum
+        "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัส", "วันพฤหัสบดี",
+        "วันศุกร์", "วันเสาร์", "วันอาทิตย์",
     ],
     "curriculum": [
         "วิชา", "หลักสูตร", "หน่วยกิต", "รายวิชา", "คอร์ส", "เนื้อหา",
         "เรียน", "course", "credit", "subject", "curriculum",
+    ],
+    "uni_info": [
+        # Location questions
+        "อยู่ที่ไหน", "อยู่ไหน", "อยู่ตรงไหน", "อยู่แถวไหน",
+        "ทางไป", "เส้นทาง", "ทิศทาง",
+        # Building / campus vocabulary
+        "ตึก", "อาคาร", "แผนที่", "โซน", "zone",
+        # Specific buildings in our dataset
+        "E-12", "HM", "ECC",
+        # General campus facilities
+        "สถานที่", "คณะ", "ห้องสมุด", "โรงอาหาร", "สระว่ายน้ำ",
+        "สนามกีฬา", "หอพัก", "สำนักงาน",
     ],
 }
 
@@ -210,7 +225,7 @@ _CHATBOT_PROMPT_TEMPLATE = """\
 intent ให้เลือกตามนี้:
 - chat     = สนทนาทั่วไป ทักทาย ถามเรื่องตัวเอง
 - info     = ถามข้อมูลมหาวิทยาลัย ตารางเรียน หลักสูตร
-- navigate = ต้องการไปยังสถานที่ในตึกโหล
+- navigate = ต้องการไปยังสถานที่ในตึกสิบสอง → reply_text ควรเป็นคำเชิญสั้นๆ เช่น "ตามหนูมาเลยค่ะ" โดยไม่ต้องพูดชื่อสถานที่ซ้ำ (ระบบจะนำทางเองอัตโนมัติ)
 - farewell = กล่าวลา ไม่ต้องการความช่วยเหลือแล้ว
 
 ตอบกลับเป็น JSON เท่านั้น รูปแบบ:
@@ -222,7 +237,7 @@ intent ให้เลือกตามนี้:
 """
 
 _FALLBACK_RESPONSE = {
-    "reply_text": "ขออภัยค่ะ ไม่เข้าใจคำถาม ช่วยพูดอีกครั้งได้ไหมค่ะ",
+    "reply_text": "รบกวนพูดใหม่อีกทีได้มั้ยคะ",
     "intent": "chat",
     "destination": None,
     "confidence": 0.3,
@@ -268,9 +283,11 @@ class LLMChatbot:
         memory_summary = self.memory.retrieve(question, student_id)
 
         # 4. Format short-term history
+        # Empty user turn ("", bot_text) means a greeting — show only the bot line
         history_lines = []
         for q, a in history[-5:]:
-            history_lines.append(f"นักศึกษา: {q}")
+            if q:
+                history_lines.append(f"นักศึกษา: {q}")
             history_lines.append(f"ขนมทาน: {a}")
         history_str = "\n".join(history_lines) if history_lines else "(ยังไม่มีประวัติการสนทนา)"
 
