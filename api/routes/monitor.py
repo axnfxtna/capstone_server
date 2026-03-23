@@ -116,9 +116,6 @@ _HTML = """<!DOCTYPE html>
       if (e.reply_text) {
         html += '<div class="row"><span class="label">reply</span><span class="value">' + e.reply_text + '</span></div>';
       }
-      if (e.phoneme_text && e.phoneme_text !== e.reply_text) {
-        html += '<div class="row"><span class="label">TTS text</span><span class="value" style="color:#8b949e">' + e.phoneme_text + '</span></div>';
-      }
       if (e.intent) {
         let intentStr = '<span class="' + intentClass(e.intent) + '">' + e.intent + '</span>';
         if (e.destination) intentStr += ' → ' + e.destination;

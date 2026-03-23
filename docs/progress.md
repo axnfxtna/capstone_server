@@ -5,13 +5,11 @@
 
 ---
 
-## Current Status: Phase 2.9 Verified ✅ — Next: Embedding Model Upgrade (BAAI/bge-m3)
+## Current Status: Phase 2.9 Bug Fixes ✅ — Pending: Server Restart + Embedding Model Upgrade (BAAI/bge-m3)
 
-Phase 2.8 (all prompt fine-tuning) complete. Phase 2.9 (database verification) complete (2026-03-22).
-Dual-model LLM architecture live: 70B for chatbot/greeting, 8B for grammar/memory.
-Database pipeline verified: SQLite (244 turns), MySQL (4 students, 229 timetable rows), Milvus (6 collections healthy).
-`enrollment_year` bug fixed — student_year now correctly derived from MySQL column.
-Next: upgrade Milvus embedding model from `all-MiniLM-L6-v2` to `BAAI/bge-m3` (1024-dim, Thai-aware).
+Phase 2.9 fixes applied (2026-03-22). Server restart required for all changes to take effect.
+Bug fixes: ปาล์มค่ะ prefix removed, grammar corrector hallucination guarded, TTS fire-and-forget, monitor TTS text row removed.
+Next: restart server, verify fixes, then upgrade Milvus embedding model from `all-MiniLM-L6-v2` to `BAAI/bge-m3` (1024-dim, Thai-aware).
 
 ---
 
@@ -154,6 +152,17 @@ Next: upgrade Milvus embedding model from `all-MiniLM-L6-v2` to `BAAI/bge-m3` (1
 - [x] Old Milvus entries (168) use `"Palm (Krittin Sakharin)"` format — silently skipped by filter, new writes correct
 - [x] **`enrollment_year` bug fixed** — `Students` table uses `enrollment_year` (e.g. 2022), not `year`; both `/greeting` and `/detection` handlers now compute `student_year = min(current_year - enrollment_year + 1, 1→4)`
 - [x] Verified: Palm (enrolled 2022, current 2026) → `student_year=4` → correct "ว่าที่บัณฑิต" tone in greeting
+
+### Bug Fixes (Phase 2.9.1, 2026-03-22)
+- [x] **"ปาล์มค่ะ" prefix bug fixed** — `build_chatbot_system_prompt()` in `llm/typhoon_client.py`:
+  - Removed `"ลงท้ายด้วย ค่ะ เสมอ"` rule (LLM was appending ค่ะ after the student name mid-sentence); `enforce_female_particle()` handles this in post-processing
+  - Added explicit rule: `ห้ามขึ้นต้นประโยคด้วยชื่อนักศึกษา ไม่ว่ากรณีใด`
+- [x] **Grammar corrector hallucination guard** — `mcp/grammar_corrector.py`:
+  - Added upper-length check: if output > 1.5× input length → discard as hallucinated, use raw
+  - Added system prompt rule: `ห้ามตอบคำถาม ห้ามเพิ่มข้อมูลใดๆ` + counter-example (question input → question output unchanged)
+- [x] **TTS fire-and-forget** — `mcp/intent_router.py`: all `_speak()` and `_navigate()` calls switched from `await` to `asyncio.create_task()` — pipeline no longer blocks on PI 5 TTS (was blocking ~18s per request when PI 5 is slow/unreachable)
+- [x] **Monitor TTS text row removed** — `api/routes/monitor.py`: `phoneme_text` row removed from HTML dashboard; `api/routes/receiver.py`: `phoneme_text` key removed from `log_event()` call
+- [ ] **Cleanup**: `phoneme_text` variable still computed in `receiver.py:272` but no longer used — safe to remove
 
 ### Prompt Fine-tuning (Phase 2.8.2–2.8.5, 2026-03-22)
 - [x] **RAG routing fixed** — `_last_route` shared-state bug removed; default fallback changed from `uni_info` → `chat_history`; casual/greeting/identity keywords added to `chat_history` route
@@ -320,6 +329,7 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
 | 2.8.2–5 | Prompt fine-tuning — grammar, chatbot, greeting, intent router | ✅ Done |
 | Dual-LLM | Typhoon2-8B for grammar + memory; 70B for chatbot + greeting | ✅ Done |
 | 2.9 | Database verification — SQLite / MySQL / Milvus all confirmed healthy; enrollment_year bug fixed | ✅ Done |
+| 2.9.1 | Bug fixes — prefix, grammar hallucination guard, TTS fire-and-forget, monitor cleanup | ✅ Done (restart pending) |
 | Embed upgrade | Swap embedding from all-MiniLM-L6-v2 → BAAI/bge-m3 (1024-dim, Thai-aware) | 🔜 Next |
 | 3 | Session persistence across restarts (Redis) | ⬜ Not started |
 | 4 | Performance benchmarking & technical report | ⬜ Not started |

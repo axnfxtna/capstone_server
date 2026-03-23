@@ -56,25 +56,19 @@ class IntentRouter:
         routed_to = []
 
         if intent in ("chat", "info"):
-            await self._speak(tts_text)
+            asyncio.create_task(self._speak(tts_text))
             routed_to.append("tts")
 
         elif intent == "farewell":
-            await asyncio.gather(
-                self._speak(tts_text),
-                self._navigate("resume_roaming"),
-                return_exceptions=True,
-            )
+            asyncio.create_task(self._speak(tts_text))
+            asyncio.create_task(self._navigate("resume_roaming"))
             routed_to.extend(["tts", "ros2_resume"])
 
         elif intent == "navigate":
             confirm_text = f"ได้เลยค่ะ ตามหนูมาเลยนะค่ะ หนูจะพาไปที่ {destination or 'ปลายทาง'} ค่ะ"
             tts_confirm = confirm_text if self.tts_engine == "typhoon_audio" else to_tts_ready(confirm_text)
-            await asyncio.gather(
-                self._speak(tts_confirm),
-                self._navigate("go_to", destination=destination),
-                return_exceptions=True,
-            )
+            asyncio.create_task(self._speak(tts_confirm))
+            asyncio.create_task(self._navigate("go_to", destination=destination))
             routed_to.extend(["tts", "ros2_navigate"])
 
         return {"routed_to": routed_to, "status": "ok"}

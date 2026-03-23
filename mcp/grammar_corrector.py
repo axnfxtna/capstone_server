@@ -23,6 +23,7 @@ _SYSTEM = (
     "- ถ้าต้นฉบับไม่มีคำลงท้าย (ครับ/ค่ะ/นะ) ห้ามเติม\n"
     "- ถ้าต้นฉบับมีคำลงท้าย ให้คงไว้ตามเดิม ห้ามเปลี่ยน\n"
     "- ห้ามเปลี่ยนความหมาย เพิ่มคำ หรือตัดทอนประโยค\n"
+    "- ห้ามตอบคำถาม ห้ามเพิ่มข้อมูลใดๆ — ถ้า input เป็นคำถาม ให้คืนคำถามนั้นกลับไปโดยแก้เฉพาะตัวสะกด\n"
     "- ตอบกลับเฉพาะข้อความที่แก้ไขแล้วเท่านั้น ห้ามอธิบาย\n\n"
     "ตัวอย่าง:\n"
     "Input:  ไปไหนมา\n"
@@ -31,6 +32,8 @@ _SYSTEM = (
     "Output: ขอบคุณครับ\n\n"
     "Input:  วันนี้มีวิชาอาไรบ้าง\n"
     "Output: วันนี้มีวิชาอะไรบ้าง\n\n"
+    "Input:  หลักสูตร RAI มีวิชาอะไรบ้าง\n"
+    "Output: หลักสูตร RAI มีวิชาอะไรบ้าง\n\n"
     "Input:  เราพบกันล่าสุดเมือไหร่นะ\n"
     "Output: เราพบกันล่าสุดเมื่อไหร่นะ"
 )
@@ -63,11 +66,18 @@ class GrammarCorrector:
             if not corrected:
                 logger.warning("GrammarCorrector: empty LLM response, using raw")
                 return raw_text
-            # If output is suspiciously short compared to input, discard it
-            if len(corrected) < len(raw_text.strip()) * 0.5:
+            # Discard if output is suspiciously short (truncated) or much longer (hallucinated)
+            raw_len = len(raw_text.strip())
+            if len(corrected) < raw_len * 0.5:
                 logger.warning(
                     "GrammarCorrector: output too short (%d vs %d chars), using raw",
-                    len(corrected), len(raw_text.strip()),
+                    len(corrected), raw_len,
+                )
+                return raw_text
+            if len(corrected) > raw_len * 1.5:
+                logger.warning(
+                    "GrammarCorrector: output too long (%d vs %d chars), LLM likely hallucinated — using raw",
+                    len(corrected), raw_len,
                 )
                 return raw_text
             return corrected

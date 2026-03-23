@@ -295,7 +295,6 @@ async def on_detection(payload: DetectionPayload, request: Request):
         "corrected": corrected,
         "rag_collection": response.get("rag_collection", ""),
         "reply_text": response.get("reply_text", ""),
-        "phoneme_text": phoneme_text,
         "intent": response.get("intent", ""),
         "destination": response.get("destination"),
         "routed_to": route_result.get("routed_to", []),

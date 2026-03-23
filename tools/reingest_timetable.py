@@ -38,8 +38,8 @@ EXCEL_DIR = os.path.join(
 MYSQL_CFG = dict(host="localhost", port=3306, user="root", password="root", database="capstone")
 MILVUS_HOST = "localhost"
 MILVUS_PORT = "19530"
-EMB_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-EMB_DIM = 384
+EMB_MODEL = "BAAI/bge-m3"
+EMB_DIM = 1024
 COLLECTION_NAME = "time_table"
 BATCH_SIZE = 50
 
