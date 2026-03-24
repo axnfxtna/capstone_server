@@ -1,5 +1,5 @@
 # PI 5 ROS2 Service Design — Navigation & Face Expression
-## KhanomTan Robot — Teammate B (ROS2 Side)
+## Satu Robot — Teammate B (ROS2 Side)
 
 **Scope:** This document is the implementation blueprint for the FastAPI service that
 Teammate B runs on the Raspberry Pi 5 alongside ROS2. The server (GPU PC) pushes

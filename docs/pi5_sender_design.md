@@ -1,5 +1,5 @@
 # PI 5 Data Sender Design
-## KhanomTan Robot — Raspberry Pi 5 Outbound Pipeline
+## Satu Robot — Raspberry Pi 5 Outbound Pipeline
 
 **Scope:** This document covers what PI 5 must **send** to the server — face detection events,
 speech events, and greetings. It is intended for Teammate A (PI 5 side).

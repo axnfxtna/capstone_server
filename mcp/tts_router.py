@@ -1,9 +1,9 @@
 """
 mcp/tts_router.py
 ==================
-Thai text pre-processor for KhanomTan TTS v1.0.
+Thai text pre-processor for Satu TTS.
 
-Splits Thai text into space-separated syllables so KhanomTan can read
+Splits Thai text into space-separated syllables so Satu can read
 each unit individually (e.g. อะไร → อะ ไร, ต้องการ → ต้อง การ).
 
 Crucially does NOT apply phoneme substitution rules — characters are
@@ -167,7 +167,7 @@ def _syllabify_thai(run: str) -> str:
 
 def to_tts_ready(text: str) -> str:
     """
-    Prepare Thai text for KhanomTan TTS v1.0.
+    Prepare Thai text for Satu TTS.
 
     Steps:
       1. pythainlp normalize (unicode fixes, no character substitution)

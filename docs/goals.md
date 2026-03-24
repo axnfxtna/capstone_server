@@ -32,7 +32,7 @@ All Phase 1 items are complete. The full pipeline runs with live PI 5 traffic.
 - [ ] Teammate B: confirm PI 5 `/navigation` accepts `{ "cmd": str, "destination": str? }`
 - [ ] Test end-to-end: ask a navigation question, confirm robot moves
 
-### 2.3 Wire up KhanomTan TTS on server ✅ DONE
+### 2.3 Wire up Satu TTS on server ✅ DONE
 - [x] `tts/khanomtan_engine.py` implemented — synthesizes WAV via pythaitts, POSTs to PI 5 `/audio_play`
 - [x] `IntentRouter` and `GreetingBot` dispatch on `tts_mode` (`"server"` | `"pi5"`)
 - [x] `tts_mode` read from `config/settings.yaml` and injected at startup in `api/main.py`
@@ -224,7 +224,7 @@ Reference: `docs/design.md` sections 3.2–3.6.
 - [x] **Greeting length cap** — `max_tokens` 128 → 64 for `greet()` and `greet_stranger()`; constraint updated with concrete short example
 - [x] **Natural questions** — banned `"มีความสุขไหม"` (robotic); replaced with open-ended examples: `"เป็นยังไงบ้างคะ"`, `"ช่วงนี้เป็นไงบ้างคะ"`, `"วันนี้เหนื่อยไหมคะ"`
 - [x] **Stranger greeting shortened** — example trimmed to single clause; capability dump banned in prompt
-- [x] **Don't-know fallback** — `"ขอโทษค่ะ ไม่ทราบค่ะ"` → `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"`
+- [x] **Don't-know fallback** — `"ขอโทษค่ะ ไม่ทราบค่ะ"` → `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"`
 - [x] **Don't-understand fallback** — `"ขออภัยค่ะ ไม่เข้าใจคำถาม..."` → `"รบกวนพูดใหม่อีกทีได้มั้ยคะ"`
 - [x] **Student year off-by-one fixed** — formula `current_year - enrollment_year + 1` → `current_year - enrollment_year`; 65→4th, 66→3rd, 67→2nd, 68→1st all correct
 - [x] **ID-prefix year fallback** — derives year from student_id first 2 digits (Thai BE short form) when MySQL has no row
@@ -254,36 +254,37 @@ The missing piece is the **PI 5 / ROS2 side**: receiving that call and actually 
 
 ---
 
-## Phase 6 — Robot Emotion / Expression Frontend 🔜 NOT STARTED
+## Phase 6 — Robot Emotion / Expression Frontend ✅ DONE (2026-03-24)
 
-A display (screen or LED matrix on the robot) shows the robot's emotional state in real time,
-synced with the pipeline state so the robot looks alive and responsive.
+Baymax face UI running on PI5 (port 7000). Server provides `face/face_client.py` helper.
+All emotion transitions are owned by the PI5 — see `docs/face_integration_notes.md` for the full PI5 implementation guide.
 
-### 6.1 Emotion state model
-- [ ] Define emotion states: `idle` / `listening` / `thinking` / `speaking` / `navigating` / `happy` / `confused`
-- [ ] Map pipeline events → emotion states:
-  - Greeting received → `happy`
-  - STT received, waiting for LLM → `thinking`
-  - TTS playing → `speaking`
-  - Navigate intent → `navigating`
-  - Low-confidence STT fallback → `confused`
-  - Session expired / farewell → `idle`
+### 6.1 Emotion state model ✅
+- [x] 5 states defined: `idle(0)` / `scanning(1)` / `happy(2)` / `talking(3)` / `thinking(4)`
+- [x] Mapping:
+  - Greeting about to fire → `happy (2)`
+  - STT ready, POSTing to server → `thinking (4)`
+  - Audio playback starts → `talking (3)`
+  - Audio playback ends → `idle (0)`
+  - Navigate TTS ends, robot moving → `scanning (1)`
 
-### 6.2 Server-side emotion event API
-- [ ] Add `emotion` field to monitor log events (already POSTed to `/events`)
-- [ ] Add `GET /emotion` endpoint → `{ "state": str, "updated_at": str }` (current emotion)
-- [ ] OR: push via WebSocket / SSE so the display reacts in real time without polling
+### 6.2 Face API ✅
+- [x] PI5 face service: `POST http://localhost:7000/face_emotion {"emotion": <int>}`
+- [x] Health check: `GET http://localhost:7000/health`
+- [x] All 5 codes tested end-to-end from server (live test: 8/8 pass)
 
-### 6.3 Frontend display (on robot or external screen)
-- [ ] Decide display target: robot-mounted screen (HDMI/SPI) vs. wall monitor vs. tablet
-- [ ] Implement emotion renderer: animated face / icon set for each state
-  - Option A: HTML/JS page polls `GET /emotion` every 500ms — fast to build
-  - Option B: WebSocket push from server — lower latency, more complex
-- [ ] Integrate with `/monitor` dashboard or build a separate `/face` route
+### 6.3 Server-side helpers ✅
+- [x] `face/face_client.py` — async helper for future server-side use (e.g. nav callback)
+- [x] `tools/watch_face.py` — real-time face state monitor for debugging
+- [x] `tools/test_face_emotions.py` — unit + live connectivity tests (17/17 pass)
 
-### 6.4 Sync with audio
-- [ ] Emotion switches to `speaking` exactly when TTS starts (not when LLM finishes)
-- [ ] Emotion returns to `listening` when TTS WAV delivery completes (on `/audio_play` 200 OK)
+### 6.4 Remaining (PI5 side)
+- [x] Trigger `happy (2)` before POSTing `/greeting`
+- [x] Trigger `thinking (4)` before POSTing `/detection`
+- [x] Trigger `talking (3)` when audio playback starts in audio player
+- [x] Trigger `idle (0)` when audio playback ends
+- [ ] Trigger `scanning (1)` when navigate TTS ends and robot starts moving (depends on Teammate B ROS2)
+- [ ] Trigger `idle (0)` on ROS2 Nav2 goal completion (depends on Teammate B)
 
 ---
 
@@ -383,7 +384,7 @@ Test that the robot greets correctly for every person type and situation.
 |---|----------|--------------------|
 | G1 | Registered student — first ever visit (no memory) | Short warm greeting by name, open-ended question |
 | G2 | Registered student — returning (has Milvus memory) | Greeting references a past topic naturally, 1 sentence |
-| G3 | Unknown visitor / stranger | "สวัสดีตอน[เวลา]ค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ" — no name, no capability dump |
+| G3 | Unknown visitor / stranger | "สวัสดีตอน[เวลา]ค่ะ หนูชื่อน้องสาธุ มีอะไรให้ช่วยไหมค่ะ" — no name, no capability dump |
 | G4 | Same registered student within cooldown window | `cooldown` status returned, no duplicate greeting |
 | G5 | Same stranger within cooldown window | `cooldown` status returned |
 | G6 | ปี 1 student | Welcoming, friendly elder-sister tone |
@@ -406,7 +407,7 @@ Student asks about places, buildings, or facilities on campus.
 | U5 | "มีสระว่ายน้ำไหม" | Answers from campus facilities data |
 | U6 | "HM building คืออะไร" | Returns faculty/building description |
 | U7 | "ECC อยู่ที่ไหน" | Returns correct zone/location |
-| U8 | "ที่จอดรถอยู่ตรงไหน" | Returns parking info if in dataset, otherwise `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"` |
+| U8 | "ที่จอดรถอยู่ตรงไหน" | Returns parking info if in dataset, otherwise `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"` |
 
 ---
 
@@ -461,7 +462,7 @@ Student chats casually — no RAG needed, robot uses memory + persona.
 |---|-------|--------------------|
 | CH1 | "สวัสดีค่ะ" | Friendly reciprocal greeting, no RAG call |
 | CH2 | "วันนี้เหนื่อยมาก" | Empathetic short reply, no over-advising |
-| CH3 | "ขนมทานคือใคร" | Short self-introduction (name + location + 2 capabilities only) |
+| CH3 | "น้องสาธุคือใคร" | Short self-introduction (name + location + 2 capabilities only) |
 | CH4 | "ทำอะไรได้บ้าง" | Lists only 2 capabilities: Q&A and E-12 navigation |
 | CH5 | "ขอบคุณนะ" | Warm short reply using ค่ะ |
 | CH6 | "ครั้งที่แล้วเราคุยอะไรกัน" | Retrieves Milvus memory and references it naturally |
@@ -495,7 +496,7 @@ Every response must pass all of these regardless of input.
 | L4 | Reply does not start with student's name | `assert not reply.startswith(student_name)` |
 | L5 | Reply ≤ 2 sentences | count Thai sentence-end particles |
 | L6 | No `ผม`, `ดิฉัน`, `ข้าพเจ้า` in reply | string check |
-| L7 | Robot refers to itself as `หนู` or `ขนมทาน` | string check |
+| L7 | Robot refers to itself as `หนู` or `น้องสาธุ` | string check |
 | L8 | Room codes spoken digit-by-digit in TTS text | check `tts_text` field in response |
 
 ---

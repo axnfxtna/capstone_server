@@ -1,7 +1,7 @@
 """
 tools/benchmark.py
 ==================
-Latency benchmark for KhanomTan AI Brain — Phase 4.11.
+Latency benchmark for Satu AI Brain — Phase 4.11.
 
 Measures TTFR (Time to First Response) and per-stage latency:
   grammar_ms  |  llm_ms  |  tts_ms  |  total_ms
@@ -49,7 +49,7 @@ FIXTURES = [
     # chat_history route (no Milvus — fastest path)
     dict(label="chat_history/greeting",    text="สวัสดีค่ะ",                     route="chat_history", intent="chat"),
     dict(label="chat_history/casual",      text="วันนี้เหนื่อยมากเลย",           route="chat_history", intent="chat"),
-    dict(label="chat_history/identity",    text="ขนมทานคือใคร",                  route="chat_history", intent="chat"),
+    dict(label="chat_history/identity",    text="น้องสาธุคือใคร",                 route="chat_history", intent="chat"),
     dict(label="chat_history/capabilities",text="ทำอะไรได้บ้าง",                 route="chat_history", intent="chat"),
     dict(label="chat_history/farewell",    text="ขอบคุณนะ ลาก่อนค่ะ",            route="chat_history", intent="farewell"),
 
@@ -253,7 +253,7 @@ def run():
     # Save report
     report_path = "docs/benchmark_report.txt"
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(f"KhanomTan Latency Benchmark — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+        f.write(f"Satu Latency Benchmark — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
         f.write("\n".join(output_lines))
     emit(f"  Report saved → {report_path}")
     emit()

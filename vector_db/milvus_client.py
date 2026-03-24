@@ -100,7 +100,7 @@ def ensure_memory_collection(dim: int = MEMORY_DIM) -> Collection:
         FieldSchema("timestamp",     DataType.VARCHAR,        max_length=32),
         FieldSchema("embedding",     DataType.FLOAT_VECTOR,   dim=dim),
     ]
-    schema = CollectionSchema(fields, description="Conversation memory for KhanomTan robot")
+    schema = CollectionSchema(fields, description="Conversation memory for Satu robot")
     col = Collection(MEMORY_COLLECTION, schema)
     col.create_index(
         "embedding",

@@ -58,19 +58,19 @@ def clean_cjk(text: str) -> str:
 def enforce_female_particle(text: str) -> str:
     """
     Replace masculine particles/pronouns in any LLM-generated Thai text.
-    The robot is female (ขนมทาน) and must always use ค่ะ / ฉัน.
+    The robot is female (น้องสาธุ) and must always use ค่ะ / น้อง.
     """
-    # "นะครับ" → "นะค่ะ"
-    text = re.sub(r"นะครับ", "นะค่ะ", text)
+    # "นะครับ" → "นะคะ"
+    text = re.sub(r"นะครับ", "นะคะ", text)
     # "ครับผม" → "ค่ะ"
     text = re.sub(r"ครับผม", "ค่ะ", text)
     # "ครับ" → "ค่ะ"
     text = re.sub(r"ครับ", "ค่ะ", text)
     # Male pronoun "ผม" → "หนู"
-    text = re.sub(r"ผม", "หนู", text)
+    text = re.sub(r"ผม", "น้อง", text)
     # Formal pronouns → "หนู"
-    text = re.sub(r"ข้าพเจ้า", "หนู", text)
-    text = re.sub(r"ดิฉัน", "หนู", text)
+    text = re.sub(r"ข้าพเจ้า", "น้อง", text)
+    text = re.sub(r"ดิฉัน", "น้อง", text)
     # Strip full English sentences (any run of ASCII words ending with punctuation or newline)
     text = re.sub(r"[A-Za-z][A-Za-z0-9 ,'\-]{8,}[.!?]", "", text)
     text = re.sub(r" {2,}", " ", text).strip()
@@ -80,19 +80,6 @@ def enforce_female_particle(text: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 # Thai system prompts
 # ═══════════════════════════════════════════════════════════════════════
-
-# Base system prompt — used by llm_chatbot for general conversation
-SYSTEM_PROMPT = (
-    "คุณคือหุ่นยนต์บริการชื่อ \"ขนมทาน\" ของสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง (KMITL)\n"
-    "คุณช่วยเหลือนักศึกษาหลักสูตร Robotics and AI Engineering (RAI)\n\n"
-    "กฎสำคัญที่ต้องปฏิบัติตามอย่างเคร่งครัด:\n"
-    "1. ตอบเป็นภาษาไทยเท่านั้น สามารถใช้คำภาษาอังกฤษได้เฉพาะชื่อเฉพาะ เช่น KMITL, RAI, email\n"
-    "2. ห้ามใช้ตัวอักษรภาษาจีน ภาษาเกาหลี หรือภาษาญี่ปุ่นโดยเด็ดขาด\n"
-    "3. ตอบสั้น กระชับ และเป็นมิตร ใช้ภาษาสุภาพ ลงท้ายด้วย \"ค่ะ\" เสมอ ห้ามใช้ \"ครับ\"\n"
-    "4. ถ้าไม่มีข้อมูล ให้ตอบว่า \"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ\" ห้ามเดา ห้ามขยายความ\n"
-    "5. ใช้คำว่า \"ห้องปฏิบัติการ\" หรือ \"แลป\" แทนคำว่า lab"
-)
-
 
 _THAI_DAYS = {0: "จันทร์", 1: "อังคาร", 2: "พุธ", 3: "พฤหัสบดี",
               4: "ศุกร์", 5: "เสาร์", 6: "อาทิตย์"}
@@ -111,7 +98,7 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
     Dynamic system prompt that personalises the response for a specific student.
     """
     return (
-        f"คุณคือ \"ขนมทาน\" หุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง "
+        f"คุณคือ \"น้องสาธุ\" หุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง "
         f"หรือเรียกสั้นๆ ว่า ลาดกระบัง\n"
         f"คุณกำลังพูดคุยกับ {student_name}\n"
         f"ปัจจุบัน: {_current_datetime_str()}\n\n"
@@ -128,7 +115,7 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
         "- ตอบเป็นภาษาไทยเสมอ ไม่ว่านักศึกษาจะพูดภาษาใด\n"
         "- ตอบสั้น กระชับ ไม่เกิน 2 ประโยค เพราะข้อความจะถูกแปลงเป็นเสียงพูด\n"
         "- ห้ามใช้ \"ครับ\" หรือ \"ผม\" ใช้ \"ฉัน\" แทน\n"
-        "- ถ้าไม่รู้คำตอบ ให้ตอบว่า \"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ\" ห้ามเดา ห้ามเสนอแนะหรืออธิบายเพิ่มเติม"
+        "- ถ้าไม่รู้คำตอบ ให้ตอบว่า \"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ\" ห้ามเดา ห้ามเสนอแนะหรืออธิบายเพิ่มเติม"
     )
 
 

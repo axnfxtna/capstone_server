@@ -1,15 +1,17 @@
 # Server Progress Log
 
-## Project: KhanomTan AI Brain — Server Side
+## Project: Satu AI Brain — Server Side
 **Stack:** FastAPI · Ollama (llama3.1-typhoon2-70b-instruct Q5_K_M + typhoon2-8b Q5_K_M) · Typhoon2-Audio sidecar · Milvus · SQLite · MySQL · Python 3.8.10 (main) + 3.10 (audio sidecar)
 
 ---
 
-## Current Status: Phase 4 🔄 IN PROGRESS (2026-03-23) — Eval tools written, routing bugs fixed, first run complete
+## Current Status: Phase 6 ✅ DONE (2026-03-24) — Face emotion integration complete, PI5-owned architecture
 
-Phase 4 eval harness complete. First eval run scored TSR 0.85, Intent Accuracy 91.3%, OOS 100%.
-Two routing bugs fixed: day-name keywords added to time_table route, `"นศ"` false-match removed from mysql_students.
-Next: re-run full eval to confirm fixes, then Phase 5 ROS2 / Phase 6 Emotion Frontend.
+Phase 6 face emotion frontend integrated. `face/face_client.py` helper created on server side.
+After discussion, all emotion state transitions moved to PI5 (owns both audio output and face display).
+Server pipeline is clean — no face calls in pipeline code.
+Live test confirmed: all 5 emotion codes (idle/scanning/happy/talking/thinking) reach PI5 face service at port 7000.
+Next: Phase 5 ROS2 navigation end-to-end (depends on Teammate B).
 
 ---
 
@@ -130,7 +132,7 @@ Next: re-run full eval to confirm fixes, then Phase 5 ROS2 / Phase 6 Emotion Fro
 
 ### Memory Summary & TTS Router (Phase 2.8.4 + TTS bypass, 2026-03-22)
 - [x] `_SUMMARY_PROMPT` updated — entity preservation rule added (building names, subjects, project topics must not be dropped); outcome-focused structure for better Milvus retrieval relevance
-- [x] `to_tts_ready()` bypassed for `tts_engine == "typhoon_audio"` — Typhoon2-Audio reads raw Thai natively; syllabification only applied for khanomtan/pi5 paths
+- [x] `to_tts_ready()` bypassed for `tts_engine == "typhoon_audio"` — Typhoon2-Audio reads raw Thai natively; syllabification only applied for satu/pi5 paths
 - [x] Bypass applied in both `intent_router.route()` and `greeting_bot._send_tts()`
 
 ### Dual-Model LLM Architecture (2026-03-22)
@@ -202,7 +204,7 @@ Next: re-run full eval to confirm fixes, then Phase 5 ROS2 / Phase 6 Emotion Fro
 #### Prompt Tuning v2
 - [x] **Day/time awareness** — `_current_datetime_str()` added to `typhoon_client.py` (UTC+7); injected into `build_chatbot_system_prompt()` and `_get_time_of_day()` in `greeting_bot.py`
 - [x] **ตึกสิบสอง** — replaced all instances of `ตึกโหล` in prompts and system prompt (easier TTS pronunciation)
-- [x] **Over-helping fix** — system prompt rule changed to `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"`, no suggestions or elaboration allowed
+- [x] **Over-helping fix** — system prompt rule changed to `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"`, no suggestions or elaboration allowed
 - [x] **ปี 4 tone** — changed from thesis-focused formal tone to `"คุยแบบเป็นกันเองและให้กำลังใจที่ใกล้เรียนจบ"`
 - [x] **Greeting context seeding** — greeting turn injected into session history as `("", greeting_text)` so chatbot knows what it just said on first user reply
 - [x] **Navigate TTS fix** — `intent_router.py` uses LLM `reply_text` directly for TTS; destination no longer spoken again
@@ -213,10 +215,10 @@ Next: re-run full eval to confirm fixes, then Phase 5 ROS2 / Phase 6 Emotion Fro
 #### Greeting Quality Fixes (2026-03-23)
 - [x] **Greeting length cap** — `max_tokens` reduced 128 → 64 for both `greet()` and `greet_stranger()`; constraint updated with concrete short example
 - [x] **Natural greeting questions** — banned `"มีความสุขไหม"` pattern (feels robotic); prompt now gives open-ended examples: `"เป็นยังไงบ้างคะ"`, `"ช่วงนี้เป็นไงบ้างคะ"`, `"วันนี้เหนื่อยไหมคะ"`
-- [x] **Stranger greeting shortened** — example in `_STRANGER_GREETING_PROMPT` trimmed to `"สวัสดีตอน[เวลา]ค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ"`; capability dump banned
+- [x] **Stranger greeting shortened** — example in `_STRANGER_GREETING_PROMPT` trimmed to `"สวัสดีตอน[เวลา]ค่ะ หนูชื่อน้องสาธุ มีอะไรให้ช่วยไหมค่ะ"`; capability dump banned
 
 #### Fallback Phrases
-- [x] **Don't-know response** — changed from `"ขอโทษค่ะ ไม่ทราบค่ะ"` → `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"` (honest, no apology)
+- [x] **Don't-know response** — changed from `"ขอโทษค่ะ ไม่ทราบค่ะ"` → `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"` (honest, no apology)
 - [x] **Don't-understand / JSON-parse fallback** — changed from `"ขออภัยค่ะ ไม่เข้าใจคำถาม..."` → `"รบกวนพูดใหม่อีกทีได้มั้ยคะ"` (natural request)
 - [x] Applied consistently in: `SYSTEM_PROMPT`, `build_chatbot_system_prompt()`, `_FALLBACK_RESPONSE`, `TyphoonClient.generate()`, `TyphoonClient.chat()`
 
@@ -265,8 +267,38 @@ Next: re-run full eval to confirm fixes, then Phase 5 ROS2 / Phase 6 Emotion Fro
 - [x] Old `mcp/tts_router.py` phoneme rules caused character corruption: คุณ→คุน, อะไร→อะไน, ต้องการ→ต้องกาน, เลย→เย, สามารถ→สามาด etc.
 - [x] Compared old vs new on 10 test cases — old approach corrupted 6/7 phrases; new produces clean output
 - [x] Replaced with syllabify-only approach: `word_tokenize` + `thai_syllables` — inserts spaces, never changes characters
-- [x] KhanomTan TTS v1.0 reads standard Thai natively; character substitution not needed
+- [x] Satu TTS v1.0 reads standard Thai natively; character substitution not needed
 - [x] Result: อะไร → อะ ไร  |  คุณ → คุณ  |  ต้องการ → ต้อง การ  (spaces only, no corruption)
+
+---
+
+## Phase 6 — Robot Emotion / Expression Frontend ✅ DONE (2026-03-24)
+
+### Architecture Decision
+After initial implementation on the server side, all emotion state transitions were moved to the PI5.
+The PI5 owns both audio output (speaker) and face display, so it has full visibility into the emotion lifecycle.
+The server pipeline has zero face calls — no latency impact, no coupling.
+
+### Server-side deliverables
+- [x] `face/face_client.py` — async `set_face(emotion, url)` helper with constants (IDLE/SCANNING/HAPPY/TALKING/THINKING); kept for future use (e.g. navigation scanning callback)
+- [x] `face/__init__.py` — package marker
+- [x] `config/settings.yaml` — `pi5_face_port: 7000` added
+- [x] `tools/test_face_emotions.py` — unit tests for face_client helper + live PI5 connectivity test
+- [x] `tools/watch_face.py` — real-time face state monitor; polls `/health` every 500ms, prints on change
+- [x] `docs/face_integration_notes.md` — PI5 implementation guide (emotion codes, transition table, timing notes)
+
+### Test results
+- [x] Unit tests: 9/9 pass (constants, error swallowing, correct HTTP body, all 5 codes)
+- [x] Live PI5 test: 8/8 pass — all emotion codes (0–4) accepted, invalid code rejected with 4xx
+- [x] Confirmed via `watch_face.py`: `talking (3)` visible on robot screen during TTS
+
+### PI5 responsibilities (documented in `docs/face_integration_notes.md`)
+- [x] Before POSTing `/greeting` → send `happy (2)`
+- [x] Before POSTing `/detection` → send `thinking (4)`
+- [x] When audio playback starts (in audio player) → send `talking (3)`
+- [x] When audio playback ends → send `idle (0)`
+- [ ] When navigate TTS ends and robot starts moving → send `scanning (1)` (depends on Teammate B ROS2)
+- [ ] When robot arrives at destination (ROS2 callback, TBD) → send `idle (0)`
 
 ---
 
@@ -355,7 +387,7 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
 | httpx | 0.28.1 | Async HTTP client (PI 5 calls) |
 | pymilvus | 2.6.10 | Vector DB client |
 | pythainlp | 3.1.1 | Thai NLP / syllabification |
-| pythaitts | 0.4.2 | Thai TTS wrapper (khanomtan) |
+| pythaitts | 0.4.2 | Thai TTS wrapper (satu) |
 | torch | 2.4.1 | GPU tensors |
 | vachanatts | 0.0.7 | VachanaTTS (installed as pythaitts dep) |
 
@@ -368,7 +400,7 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
 | Server (this repo) | You |
 | TTS playback on PI 5 (`/tts_render`) | Teammate A |
 | ROS2 / Navigation on PI 5 (`/navigation`) | Teammate B |
-| KhanomTan TTS model integration | Teammate A |
+| Satu TTS model integration | Teammate A |
 
 ---
 
@@ -396,7 +428,7 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
 | 2.6 | Session timeout & cleanup (600s idle expiry) | ✅ Done |
 | 2.7 | PI 5 race condition fix, LLM persona, TTS pre-processor rewrite, monitor MCP visibility | ✅ Done |
 | LLM upgrade | qwen2.5:7b → llama3.1-typhoon2-70b-instruct (Q5_K_M, 4× A100) | ✅ Done |
-| Phase A TTS | Typhoon2-Audio sidecar TTS replacing khanomtan — WAV at 16kHz, confirmed end-to-end | ✅ Done |
+| Phase A TTS | Typhoon2-Audio sidecar TTS replacing satu — WAV at 16kHz, confirmed end-to-end | ✅ Done |
 | Phase B STT | Typhoon2-Audio sidecar STT — `/audio_detection` endpoint on main server | ✅ Done |
 | 2.8.1 | Greeting personalisation — year-tone + memory recall + thai_name/student_id payload | ✅ Done |
 | 2.8.2–5 | Prompt fine-tuning — grammar, chatbot, greeting, intent router | ✅ Done |
@@ -424,7 +456,7 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
 **Fallback phrases**
 - HTTP error fallback: `"รบกวนพูดใหม่อีกทีได้มั้ยคะ"` (both `generate()` and `chat()`)
 - Chatbot JSON parse fallback: same phrase
-- SYSTEM_PROMPT rule 4: `"ขนมทานไม่มีข้อมูลเรื่องนั้นค่ะ"` on unknown — no guessing
+- SYSTEM_PROMPT rule 4: `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"` on unknown — no guessing
 
 **Student year calculation fix**
 - Removed erroneous `+1` in both `/greeting` and `/detection` handlers

@@ -1,5 +1,5 @@
 # Server-Side Design Document
-## KhanomTan AI Brain — ROS2 Campus Robot (v3, 2026-03-22)
+## Satu AI Brain — ROS2 Campus Robot (v3, 2026-03-22)
 
 > **Purpose:** Accurate reference document for the current implemented state of the server-side pipeline. Reflects Phase 2.8.1 — all schemas, prompts, and logic match the live codebase.
 
@@ -7,7 +7,7 @@
 
 ## 1. Project Overview
 
-The server runs on a PC (Ubuntu 22.04, NVIDIA GPU) and acts as the **AI Brain** of a service robot named **ขนมทาน** (KhanomTan). It receives audio/vision events from a Raspberry Pi 5 (PI 5), processes them through a multi-stage MCP pipeline, and routes output back to TTS playback or ROS2 navigation commands.
+The server runs on a PC (Ubuntu 22.04, NVIDIA GPU) and acts as the **AI Brain** of a service robot named **น้องสาธุ** (Satu). It receives audio/vision events from a Raspberry Pi 5 (PI 5), processes them through a multi-stage MCP pipeline, and routes output back to TTS playback or ROS2 navigation commands.
 
 **Core responsibilities:**
 - Receive face-detection and STT events from PI 5 via HTTP POST
@@ -179,7 +179,7 @@ class ActivateResponse(BaseModel):
 
 **LLM Prompt (`_GREETING_PROMPT`):**
 ```
-คุณคือหุ่นยนต์บริการหญิงชื่อ "ขนมทาน" ของ KMITL ใช้คำลงท้าย "ค่ะ" เสมอ ห้ามใช้ "ครับ"
+คุณคือหุ่นยนต์บริการหญิงชื่อ "น้องสาธุ" ของ KMITL ใช้คำลงท้าย "ค่ะ" เสมอ ห้ามใช้ "ครับ"
 
 นักศึกษาที่พบ: คุณ {student_name} (ปีที่ {student_year})
 {year_tone}
@@ -381,7 +381,7 @@ For `farewell` and `navigate`: TTS + ROS2 calls fired **in parallel** via `async
 
 **Navigation Confirmation Prompt (`_NAVIGATE_CONFIRM_PROMPT`):**
 ```
-คุณคือหุ่นยนต์หญิงชื่อขนมทาน ใช้คำลงท้าย "ค่ะ" เสมอ ห้ามใช้ "ครับ"
+คุณคือหุ่นยนต์หญิงชื่อน้องสาธุ ใช้คำลงท้าย "ค่ะ" เสมอ ห้ามใช้ "ครับ"
 สร้างประโยคยืนยันสั้น ๆ เป็นภาษาไทย (1 ประโยค) ว่าจะพานักศึกษาไปที่ {destination}
 ตัวอย่าง: "ได้เลยค่ะ ตามหนูมาเลยนะค่ะ หนูจะพาไปที่ {destination}"
 ตอบกลับเฉพาะประโยคเท่านั้น
@@ -395,7 +395,7 @@ For `farewell` and `navigate`: TTS + ROS2 calls fired **in parallel** via `async
 
 **File:** `mcp/tts_router.py`
 
-**Purpose:** Text normalisation only — converts Thai text to syllable-spaced format that KhanomTan TTS v1.0 reads cleanly. Does **not** run the TTS model.
+**Purpose:** Text normalisation only — converts Thai text to syllable-spaced format that Satu TTS v1.0 reads cleanly. Does **not** run the TTS model.
 
 **Function:** `to_tts_ready(text: str) -> str`
 
@@ -413,7 +413,7 @@ For `farewell` and `navigate`: TTS + ROS2 calls fired **in parallel** via `async
 มหาวิทยาลัย → มะ หา วิท ยา ลัย
 ```
 
-> Note: The old approach joined syllables with `-` and performed character substitution, which corrupted text. Current approach inserts spaces only — KhanomTan reads standard Thai natively.
+> Note: The old approach joined syllables with `-` and performed character substitution, which corrupted text. Current approach inserts spaces only — Satu reads standard Thai natively.
 
 ---
 
@@ -429,7 +429,7 @@ to_tts_ready(text)
     ▼
 khanomtan_engine.synthesize_and_send()
     ├── _clean_text()         — normalize + collapse whitespace
-    ├── _tts.predict(text)    — KhanomTan v1.0 GPU inference (pythaitts)
+    ├── _tts.predict(text)    — Satu v1.0 GPU inference (pythaitts)
     │   Model: wannaphong/KhanomTan-TTS-v1.0
     │   Speaker: Tsyncone (Thai female, TSync-1 corpus)
     │   Language: th-th
@@ -480,7 +480,7 @@ server/
 ├── llm/
 │   └── typhoon_client.py          # Ollama HTTP client, female particle enforcer, CJK cleaner
 ├── tts/
-│   ├── khanomtan_engine.py        # Option A: KhanomTan GPU TTS → WAV → PI 5
+│   ├── khanomtan_engine.py        # Option A: Satu GPU TTS → WAV → PI 5
 │   ├── kanom_than_player.py       # send_wav() helper — POST WAV to PI 5 /audio_play
 │   ├── text_sender.py             # Option B: POST phoneme text to PI 5 /tts_render
 │   └── vits_engine.py             # Stub (future VITS integration)
@@ -537,7 +537,7 @@ milvus:
   top_k: 3
 
 tts:
-  mode: "server"          # "server" = Option A (KhanomTan GPU → WAV → PI 5)
+  mode: "server"          # "server" = Option A (Satu GPU → WAV → PI 5)
   speaker: "Tsyncone"     # Thai female voice (TSync-1 corpus)
   language: "th-th"
 
@@ -695,7 +695,7 @@ _sessions[person_id] = {
 
 **Base `SYSTEM_PROMPT`** (injected into all chatbot calls):
 ```
-คุณคือหุ่นยนต์บริการชื่อ "ขนมทาน" ของสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง (KMITL)
+คุณคือหุ่นยนต์บริการชื่อ "น้องสาธุ" ของสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง (KMITL)
 คุณช่วยเหลือนักศึกษาหลักสูตร Robotics and AI Engineering (RAI)
 
 กฎสำคัญ:
@@ -776,7 +776,7 @@ All MCP modules run as **Python objects within the same FastAPI process** — no
 | pymilvus | 2.6.10 | Vector DB client |
 | sentence-transformers | — | Embedding model (all-MiniLM-L6-v2, dim 384) |
 | pythainlp | 3.1.1 | Thai NLP: word tokenise, syllabification, normalise |
-| pythaitts | 0.4.2 | KhanomTan TTS wrapper (Coqui-TTS backend) |
+| pythaitts | 0.4.2 | Satu TTS wrapper (Coqui-TTS backend) |
 | torch | 2.4.1 | GPU tensors for TTS inference |
 | aiosqlite | — | Async SQLite for conversation log |
 | mysql-connector-python | — | MySQL client for student/timetable data |

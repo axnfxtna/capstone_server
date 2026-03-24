@@ -14,12 +14,12 @@ set -e
 
 PI5_USER="${1:-pi}"
 PI5_HOST="10.26.9.196"
-PI5_DIR="/home/${PI5_USER}/khanomtan_sender"
+PI5_DIR="/home/${PI5_USER}/satu_sender"
 
 SERVER_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "========================================"
-echo "  KhanomTan — SCP to PI 5"
+echo "  Satu — SCP to PI 5"
 echo "  Target : ${PI5_USER}@${PI5_HOST}:${PI5_DIR}"
 echo "  Source : ${SERVER_DIR}"
 echo "========================================"

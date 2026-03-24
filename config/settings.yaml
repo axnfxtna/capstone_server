@@ -3,6 +3,7 @@ server:
   port: 8000
   pi5_ip: "10.26.9.196"
   pi5_port: 8766
+  pi5_face_port: 7000
 
 llm:
   provider: "ollama"
@@ -35,7 +36,7 @@ milvus:
 tts:
   mode: "server"                 # "server" = WAV → PI 5 | "pi5" = phoneme text → PI 5
   engine: "typhoon_audio"        # "typhoon_audio" = sidecar | "khanomtan" = local pythaitts
-  speaker: "Tsyncone"            # KhanomTan v1.0 speaker (used only when engine=khanomtan)
+  speaker: "Tsyncone"            # Satu / KhanomTan TTS v1.0 speaker (used only when engine=khanomtan)
   language: "th-th"
 
 audio_service:

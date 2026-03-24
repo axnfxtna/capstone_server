@@ -66,7 +66,6 @@ class IntentRouter:
             routed_to.extend(["tts", "ros2_resume"])
 
         elif intent == "navigate":
-            # Use the LLM's reply_text for TTS — destination is for ROS2 only, not spoken
             asyncio.create_task(self._speak(tts_text))
             asyncio.create_task(self._navigate("go_to", destination=destination))
             routed_to.extend(["tts", "ros2_navigate"])

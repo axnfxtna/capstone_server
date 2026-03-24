@@ -49,7 +49,7 @@ _HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>KhanomTan Pipeline Monitor</title>
+  <title>Satu Pipeline Monitor</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
@@ -82,7 +82,7 @@ _HTML = """<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>KhanomTan Pipeline Monitor</h1>
+  <h1>Satu Pipeline Monitor</h1>
   <div class="subtitle">Auto-refreshes every 3s &nbsp;|&nbsp; Last 50 events</div>
   <div id="status">Loading...</div>
   <div id="feed"></div>

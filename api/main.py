@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI):
     app.state.chatbot          = chatbot
     app.state.intent_router    = intent_router
 
-    logger.info("KhanomTan AI Brain server started ✅")
+    logger.info("Satu AI Brain server started ✅")
     yield
 
     # Shutdown — nothing to teardown for now
@@ -155,7 +155,7 @@ async def lifespan(app: FastAPI):
 # ─────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="KhanomTan AI Brain",
+    title="Satu AI Brain",
     description="Robot AI server — KMITL RAI campus assistant",
     version="2.0.0",
     lifespan=lifespan,
@@ -182,4 +182,4 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "KhanomTan AI Brain v2"}
+    return {"status": "ok", "service": "Satu AI Brain v2"}

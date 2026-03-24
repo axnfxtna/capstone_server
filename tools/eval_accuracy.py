@@ -1,7 +1,7 @@
 """
 tools/eval_accuracy.py
 =======================
-Accuracy evaluation for KhanomTan AI Brain — Phase 4.12.
+Accuracy evaluation for Satu AI Brain — Phase 4.12.
 
 Metrics measured:
   A. Intent Accuracy + F1 per class (chat / info / navigate / farewell)
@@ -52,7 +52,7 @@ INTENT_FIXTURES = [
     # ── chat intent ──────────────────────────────────────────────
     dict(text="สวัสดีค่ะ",                      intent="chat",     route="chat_history"),
     dict(text="วันนี้เหนื่อยมากเลย",             intent="chat",     route="chat_history"),
-    dict(text="ขนมทานคือใครอ่ะ",                intent="chat",     route="chat_history"),
+    dict(text="น้องสาธุคือใครอ่ะ",               intent="chat",     route="chat_history"),
     dict(text="ทำอะไรได้บ้างคะ",                intent="chat",     route="chat_history"),
     dict(text="ขอบคุณมากนะคะ",                  intent="chat",     route="chat_history"),
     dict(text="เป็นยังไงบ้างช่วงนี้",            intent="chat",     route="chat_history"),
@@ -404,7 +404,7 @@ def run():
     # Save report
     report_path = "docs/eval_report.txt"
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(f"KhanomTan Accuracy Evaluation — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+        f.write(f"Satu Accuracy Evaluation — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
         f.write("\n".join(output_lines))
     emit(f"  Report saved → {report_path}")
     emit()

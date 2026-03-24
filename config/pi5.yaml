@@ -14,7 +14,7 @@ server:
   port: 8000
 
 audio:
-  # WAV format received from server (KhanomTan TTS output)
+  # WAV format received from server (Satu TTS output)
   sample_rate: 16000
   channels: 1
   bit_depth: 16

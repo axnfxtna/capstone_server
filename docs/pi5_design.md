@@ -1,5 +1,5 @@
 # PI 5 Service Design — Audio & Activation
-## KhanomTan Robot — Raspberry Pi 5 Side
+## Satu Robot — Raspberry Pi 5 Side
 
 **Scope:** This document covers only the two routes the PI 5 must expose to receive
 commands from the server: `/audio_play` (WAV playback) and `/set_active` (push-based
@@ -278,7 +278,7 @@ Multiple workers would each have their own copy.
 
 | Stage | Where | Target |
 |-------|-------|--------|
-| KhanomTan GPU synthesis | Server | ~600 ms |
+| Satu GPU synthesis | Server | ~600 ms |
 | WAV transfer (100 KB over LAN) | Network | ~10 ms |
 | `/audio_play` response (queue) | PI 5 | < 5 ms |
 | Audio playback | PI 5 speaker | real-time |

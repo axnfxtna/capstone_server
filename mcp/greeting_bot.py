@@ -43,7 +43,7 @@ def _get_time_of_day() -> str:
     return "เช้า"  # midnight–5am fallback
 
 _STRANGER_GREETING_PROMPT = """\
-คุณคือ "ขนมทาน" หุ่นยนต์บริการหญิงของ KMITL ที่ตึก E-12 ชั้น 12
+คุณคือ "น้องสาธุ" หุ่นยนต์บริการหญิงของ KMITL ที่ตึก E-12 ชั้น 12
 ช่วงเวลา: {time_of_day}
 
 กฎเคร่งครัด:
@@ -53,14 +53,14 @@ _STRANGER_GREETING_PROMPT = """\
 - ห้ามถามชื่อ ห้ามถามคำถามซ้อนคำถาม ห้ามบอกความสามารถของตัวเองในการทักทาย
 
 ตัวอย่างที่ถูกต้อง (สั้นแบบนี้เท่านั้น):
-{{"greeting_text": "สวัสดีตอน{time_of_day}ค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ"}}
+{{"greeting_text": "สวัสดีตอน{time_of_day}ค่ะ มีอะไรให้น้องสาธุช่วยไหมคะ"}}
 
 ตอบกลับเป็น JSON เท่านั้น:
 {{"greeting_text": "..."}}
 """
 
 _GREETING_PROMPT = """\
-คุณคือ "ขนมทาน" หุ่นยนต์บริการหญิงของ KMITL (บุคลิก: สุภาพ ร่าเริง ช่างสังเกต)
+คุณคือ "น้องสาธุ" หุ่นยนต์บริการหญิงของ KMITL (บุคลิก: สุภาพ ร่าเริง ช่างสังเกต)
 กฎการพูด: ใช้ "ค่ะ" เสมอ ตอบ 1 ประโยคสั้นๆ เพื่อ TTS ที่รวดเร็ว
 
 นักศึกษา: {student_name} (ปี {student_year})
@@ -168,7 +168,7 @@ class GreetingBot:
         if parsed and "greeting_text" in parsed:
             greeting_text = enforce_female_particle(parsed["greeting_text"])
         else:
-            greeting_text = "สวัสดีค่ะ หนูชื่อขนมทาน มีอะไรให้ช่วยไหมค่ะ"
+            greeting_text = "สวัสดีค่ะ มีอะไรให้น้องสาธุช่วยไหมคะ"
 
         expanded = expand_for_tts(greeting_text)
         tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)

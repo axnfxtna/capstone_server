@@ -24,7 +24,7 @@ import logging
 import re
 from typing import Dict, List, Optional, Tuple
 
-from llm.typhoon_client import TyphoonClient, SYSTEM_PROMPT, build_chatbot_system_prompt, enforce_female_particle
+from llm.typhoon_client import TyphoonClient, build_chatbot_system_prompt, enforce_female_particle
 from mcp.memory_manager import MemoryManager
 from vector_db import milvus_client
 from database.mysql_client import fetch_timetable_rows, fetch_student_context
@@ -288,7 +288,7 @@ class LLMChatbot:
         for q, a in history[-5:]:
             if q:
                 history_lines.append(f"นักศึกษา: {q}")
-            history_lines.append(f"ขนมทาน: {a}")
+            history_lines.append(f"น้องสาธุ: {a}")
         history_str = "\n".join(history_lines) if history_lines else "(ยังไม่มีประวัติการสนทนา)"
 
         # 5. Build system prompt
