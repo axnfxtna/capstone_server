@@ -16,7 +16,7 @@ Read flow (/summary):
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from database import sqlite_client
@@ -32,10 +32,10 @@ logger = logging.getLogger(__name__)
 
 _SUMMARY_PROMPT = """\
 สรุปการสนทนานี้เป็นภาษาไทย 1-2 ประโยค โดยเน้น:
-- Keyword สำคัญ: ชื่อตึก วิชา สถานที่ หรือหัวข้อโปรเจกต์ (ห้ามตัดชื่อเฉพาะทิ้ง)
+- คำสำคัญ: ชื่อตึก ชื่อวิชา ชื่อสถานที่ หรือหัวข้อโปรเจกต์
 - สถานะล่าสุด: นักศึกษาต้องการอะไร และผลลัพธ์สุดท้ายคืออะไร
 
-กฎ: ห้ามตัดชื่อเฉพาะทิ้ง และห้ามอธิบายเพิ่มเติม
+กฎสำคัญ: ห้ามตัดชื่อเฉพาะทิ้ง และห้ามอธิบายเพิ่มเติม
 
 นักศึกษา: {user_text}
 หุ่นยนต์: {bot_reply}
@@ -69,7 +69,7 @@ class MemoryManager:
           - Always writes raw text to SQLite
           - Generates LLM summary → embeds → writes to Milvus
         """
-        ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        ts = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%dT%H:%M:%S+07:00")
 
         # 1. Raw log in SQLite (fire-and-forget, never blocks the response)
         try:

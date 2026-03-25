@@ -292,11 +292,11 @@ async def on_detection(payload: DetectionPayload, request: Request):
 
         t_start = time.perf_counter()
 
-        logger.info("▶ [1/3 grammar ] %s — %r", display_name, payload.stt.text)
+        logger.info("▶ [1/3 grammar ] %s — skipped (raw STT passed through)", display_name)
         t0 = time.perf_counter()
-        corrected = app_state.grammar_corrector.correct(payload.stt.text)
+        corrected = payload.stt.text
         t_grammar = (time.perf_counter() - t0) * 1000
-        logger.info("✔ [1/3 grammar ] %.0fms — corrected=%r", t_grammar, corrected)
+        logger.info("✔ [1/3 grammar ] %.0fms — raw=%r", t_grammar, corrected)
 
         logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
         t0 = time.perf_counter()
@@ -308,6 +308,7 @@ async def on_detection(payload: DetectionPayload, request: Request):
             student_name=display_name,
             student_year=1,
             history=sess["history"],
+            routing_hint=payload.stt.text,
         )
         t_llm = (time.perf_counter() - t0) * 1000
         logger.info(
@@ -409,12 +410,12 @@ async def on_detection(payload: DetectionPayload, request: Request):
 
     t_start = time.perf_counter()
 
-    # 1. Grammar correction
-    logger.info("▶ [1/3 grammar ] %s — %r", display_name, payload.stt.text)
+    # 1. Grammar correction — skipped (8B model hallucinations outweigh benefit)
+    logger.info("▶ [1/3 grammar ] %s — skipped (raw STT passed through)", display_name)
     t0 = time.perf_counter()
-    corrected = app_state.grammar_corrector.correct(payload.stt.text)
+    corrected = payload.stt.text
     t_grammar = (time.perf_counter() - t0) * 1000
-    logger.info("✔ [1/3 grammar ] %.0fms — corrected=%r", t_grammar, corrected)
+    logger.info("✔ [1/3 grammar ] %.0fms — raw=%r", t_grammar, corrected)
 
     # 2. RAG chatbot
     logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
@@ -426,6 +427,7 @@ async def on_detection(payload: DetectionPayload, request: Request):
         student_name=display_name,
         student_year=sess["student_year"],
         history=sess["history"],
+        routing_hint=payload.stt.text,
     )
     t_llm = (time.perf_counter() - t0) * 1000
     logger.info(

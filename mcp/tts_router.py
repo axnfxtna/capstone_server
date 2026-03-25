@@ -44,15 +44,33 @@ _ENG_WORD = {
     'lab':          'แลป',
     'ai':           'เอไอ',
     'rai':          'อาร์เอไอ',
+    'matbot':       'แมทบอท',
     'kmitl':        'เค เอ็ม ไอ ที แอล',
     'building':     'อาคาร',
     'floor':        'ชั้น',
     'robotics':     'โรโบติกส์',
     'engineering':  'วิศวกรรม',
+    'programming':  'โปรแกรมมิ่ง',
+    'drawing':      'ดรออิ้ง',
+    'introduction': 'อินโทรดักชั่น',
+    'intro':        'อินโทร',
+    'physics':      'ฟิสิกส์',
+    'to':           'ทู',
+    'password':     'พาสเวิร์ด',
+    'microprocessor': 'ไมโครโปรเซสเซอร์',
+    'microcontroller': 'ไมโครคอนโทรลเลอร์',
+    'interface': 'อินเทอร์เฟซ',
 }
 
 # Regex to split a token into letter-runs and digit-runs
 _ALNUM_SPLIT = re.compile(r'[A-Za-z]+|\d+')
+
+# Thai word substitutions for known mispronunciations
+# Applied before syllabification — longer matches first
+_THAI_SUBSTITUTION = {
+    'น้องสาธุ': 'น้อง สา ทุ',
+    'สาธุ':     'สา ทุ',
+}
 
 
 _DIGIT_THAI = {'0': 'ศูนย์', '1': 'หนึ่ง', '2': 'สอง', '3': 'สาม',
@@ -184,6 +202,10 @@ def to_tts_ready(text: str) -> str:
             text = _normalize(text)
         except Exception:
             pass
+
+    # Apply Thai word substitutions (known mispronunciations)
+    for word, replacement in _THAI_SUBSTITUTION.items():
+        text = text.replace(word, replacement)
 
     # Expand ๆ (mai yamok)
     text = re.sub(

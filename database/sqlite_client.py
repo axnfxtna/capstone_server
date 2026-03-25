@@ -8,7 +8,7 @@ Milvus stores only the embedded summary; SQLite has the full raw text.
 
 import aiosqlite
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ async def log_turn(
     db_path: str = _DEFAULT_DB,
 ) -> None:
     """Append one conversation turn to the raw log."""
-    ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    ts = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%dT%H:%M:%S+07:00")
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
@@ -122,7 +122,7 @@ async def upsert_session(
     db_path: str = _DEFAULT_DB,
 ) -> None:
     """Create or update a session record."""
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%dT%H:%M:%S+07:00")
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """

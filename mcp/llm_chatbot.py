@@ -211,7 +211,7 @@ def _build_rag_context(
 _CHATBOT_PROMPT_TEMPLATE = """\
 {system_prompt}
 
-ข้อมูลที่จำได้เกี่ยวกับนักศึกษาคนนี้:
+ข้อมูลแบบสรุปจากการพูดคุยในอดีต:
 {memory_summary}
 
 ข้อมูลอ้างอิงจากระบบ:
@@ -223,17 +223,18 @@ _CHATBOT_PROMPT_TEMPLATE = """\
 คำถามปัจจุบัน: {question}
 
 intent ให้เลือกตามนี้:
-- chat     = สนทนาทั่วไป ทักทาย ถามเรื่องตัวเอง
-- info     = ถามข้อมูลมหาวิทยาลัย ตารางเรียน หลักสูตร
-- navigate = ต้องการไปยังสถานที่ในตึกสิบสอง → reply_text ควรเป็นคำเชิญสั้นๆ เช่น "ตามหนูมาเลยค่ะ" โดยไม่ต้องพูดชื่อสถานที่ซ้ำ (ระบบจะนำทางเองอัตโนมัติ)
-- farewell = กล่าวลา ไม่ต้องการความช่วยเหลือแล้ว
+- chat     = ทักทาย | สนทนาเรื่องทั่วไป | คำขอที่อยู่นอกเหนือความสามารถของน้องสาธุ (ให้ตอบปฏิเสธสั้นๆ ด้วย intent=chat)
+- info     = ถามข้อมูลเกี่ยวกับสถาบันลาดกระบังเท่านั้น เช่น ตารางเรียน หลักสูตร สถานที่ในสถาบัน — ห้ามใช้กับคำขอทำงานให้ เช่น ทำการบ้าน แปลภาษา โทรหาคน
+- navigate = ต้องการไปยังสถานที่ในตึกสิบสอง ได้แก่ A | B | C → ใช้เฉพาะเมื่อนักศึกษาระบุ destination ชัดเจน ถ้าไม่มีชื่อห้องชัดเจนให้ใช้ info แทน reply_text ควรเป็นคำเชิญสั้นๆ เช่น "ตามน้องสาธุมาเลยค่ะ" โดยไม่ต้องพูดชื่อสถานที่ซ้ำ (ระบบจะนำทางเองอัตโนมัติ)
+- farewell = บอกลา | ไม่ต้องการความช่วยเหลือแล้ว
 
 ตอบกลับเป็น JSON เท่านั้น รูปแบบ:
 {{
   "reply_text": "ข้อความตอบกลับภาษาไทย",
   "intent": "chat | info | navigate | farewell",
-  "destination": "ชื่อสถานที่ภาษาไทย หรือ null"
+  "destination": null
 }}
+หมายเหตุ: destination ให้ใส่ชื่อห้อง "A", "B", หรือ "C" เฉพาะเมื่อ intent=navigate เท่านั้น ในกรณีอื่นทุกกรณีให้ใส่ null (ไม่ใช่ string "null")
 """
 
 _FALLBACK_RESPONSE = {
@@ -268,13 +269,14 @@ class LLMChatbot:
         student_name: str,
         student_year: int,
         history: List[Tuple[str, str]],  # [(user, bot), ...]  last N turns
+        routing_hint: Optional[str] = None,  # raw STT text — route on this to preserve intent keywords
     ) -> Dict:
         """
         Full RAG + memory chatbot turn.
         Returns a dict matching ChatbotResponse schema.
         """
-        # 1. Route query
-        collection = _route_query(question)
+        # 1. Route query — use raw STT text if provided (grammar corrector may rewrite keywords)
+        collection = _route_query(routing_hint if routing_hint else question)
 
         # 2. RAG context from dataset
         rag_context = _build_rag_context(question, collection, self.rag_top_k, self.mysql_cfg)
@@ -317,10 +319,14 @@ class LLMChatbot:
         reply_text = enforce_female_particle(
             parsed.get("reply_text", _FALLBACK_RESPONSE["reply_text"])
         )
+        # Normalize string "null" → None (LLM sometimes outputs the literal word)
+        destination = parsed.get("destination")
+        if isinstance(destination, str) and destination.lower() in ("null", "none", ""):
+            destination = None
         return {
             "reply_text":     reply_text,
             "intent":         parsed.get("intent", "chat"),
-            "destination":    parsed.get("destination"),
+            "destination":    destination,
             "rag_collection": collection,
         }
 
@@ -333,12 +339,14 @@ class LLMChatbot:
         student_name: str,
         student_year: int,
         history: List[Tuple[str, str]],
+        routing_hint: Optional[str] = None,
     ) -> Dict:
         """
         ask() + store the turn in memory.  Fire-and-forget the store.
         """
         response = self.ask(
-            question, session_id, student_id, student_name, student_year, history
+            question, session_id, student_id, student_name, student_year, history,
+            routing_hint=routing_hint,
         )
         # Store asynchronously — do not await; don't block the response
         asyncio.create_task(

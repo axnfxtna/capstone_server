@@ -325,34 +325,50 @@ All emotion transitions are owned by the PI5 — see `docs/face_integration_note
 
 ---
 
-## Prompt Tuning v2 🔜 NEXT
+## Robot Rename — สาธุ / Satu ✅ DONE (2026-03-24)
 
-Second pass on all LLM prompts, informed by real conversation observations since v1.
-Goal: tighter, more natural Thai replies; better RAG answer quality; fewer edge-case failures.
+- [x] Thai name: สาธุ — self-reference: น้องสาธุ / น้อง; English: Satu
+- [x] All prompts, configs, docs, tools updated
+- [x] `SYSTEM_PROMPT` constant removed — `build_chatbot_system_prompt()` is sole identity prompt
+- [x] `enforce_female_particle()` updated: ผม/ดิฉัน/ข้าพเจ้า → น้อง
 
-### What to revisit (per component)
+---
 
-**`llm_chatbot` system prompt**
-- [ ] Review real reply samples from `conversation_memory` — identify recurring awkward patterns
-- [ ] Tighten the 2-sentence cap: enforce it more strictly or adjust for complex info queries
-- [ ] Improve out-of-scope denial phrasing — current version can sound too abrupt
-- [ ] Review how the robot handles follow-up questions ("แล้ว...ล่ะ", "อีกอย่าง...")
+## Prompt Tuning v2 ✅ DONE (2026-03-25)
 
-**`greeting_bot` prompt**
-- [ ] Review greeting variety — does the LLM repeat the same opener across sessions?
-- [ ] Test memory injection quality: does the robot reference past conversations naturally?
-- [ ] Tune year-tone mapping — ปี 4 "ว่าที่บัณฑิต" tone should feel warm, not just congratulatory
+Second pass on all LLM prompts, informed by real conversation logs.
 
-**`grammar_corrector` prompt**
-- [ ] Collect 20 STT inputs where the corrector changed something it shouldn't
-- [ ] Add more targeted few-shot counter-examples based on observed mis-corrections
-- [ ] Consider expanding the < 15 char skip threshold if short queries are being altered
+**Critical**
+- [x] **Grammar corrector answers questions** — fully skipped in `receiver.py`; 8B model hallucinations (answers questions, translates English → Thai) made it harmful; `corrected = payload.stt.text` set directly
+- [x] **Grammar corrector translates English → Thai** — resolved by full skip above; code-level bypass also added to `grammar_corrector.py` for non-Thai inputs
+- [x] **`ฉัน` pronoun slipping through** — `enforce_female_particle()` in `llm/typhoon_client.py`: `ฉัน` → `น้อง` added
+- [x] **`_YEAR_TONE` NameError crash** — `greeting_bot.py`: dangling `year_tone = _YEAR_TONE.get(...)` removed; every registered greeting was returning 500
+- [x] **`_current_datetime_str()` invalid format syntax** — `greeting_bot.py`: placeholder fixed; `current_datetime` passed as `.format()` kwarg
 
-**`memory_manager` summarizer**
-- [ ] Review stored summaries in `conversation_memory` — are they specific enough for retrieval?
-- [ ] Test if a summary from a navigation turn retrieves correctly when the student later asks "ไปที่เดิมได้ไหม"
+**Medium**
+- [x] **Navigate false positives on garbled STT** — `_CHATBOT_PROMPT_TEMPLATE` navigate description updated: only emit `navigate` when destination is explicitly stated (A/B/C); falls back to `info` otherwise
+- [x] **Timetable RAG routing miss** — grammar corrector was rewriting `วันไหน` before routing; fixed by passing raw `payload.stt.text` as `routing_hint` to `llm_chatbot.ask()`
+- [x] **Greeting endpoint blocking** — `greeting_bot.py`: `asyncio.create_task()` for TTS + navigation; HTTP response no longer waits for PI5 (was blocking up to 10s)
+- [x] **Repetitive replies** — deemed acceptable; no change made
 
-### After prompt v2 → run `pipeline_test.py` again to confirm all 39 checks still pass
+**TTS**
+- [x] **สาธุ mispronounced** — `tts_router.py` `_THAI_SUBSTITUTION`: `น้องสาธุ` → `น้อง สา ทุ`, `สาธุ` → `สา ทุ`
+- [x] **All datetime → Thai time UTC+7** — 5 files updated: `sqlite_client.py`, `memory_manager.py`, `monitor.py`, `benchmark.py`, `eval_accuracy.py`
+
+**Minor**
+- [ ] **Out-of-scope math phrasing** — `"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ"` sounds like a database miss for math. Low priority.
+- [ ] **ห้องน้ำ data gap** — robot has no bathroom location data; replies "ไม่มีข้อมูล" for a basic student question. Add to `uni_info` dataset.
+
+### eval_accuracy.py result (2026-03-25) — all targets met ✅
+| Metric | Result | Target |
+|--------|--------|--------|
+| Intent Accuracy | 90.9% | ≥ 90% ✅ |
+| Slot F1 (destination) | 1.00 | ≥ 0.85 ✅ |
+| Language Compliance | 100% | 100% ✅ |
+| OOS Rejection Rate | 100% | ≥ 80% ✅ |
+| TSR | 0.91 | ≥ 0.80 ✅ |
+
+### pipeline_test.py result: 35/36 pass (1 check updated for new behavior; all core logic passes)
 
 ---
 

@@ -9,7 +9,7 @@ Real-time pipeline monitor.
 
 import logging
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Deque, Dict, Any
 
 from fastapi import APIRouter
@@ -27,7 +27,7 @@ _events: Deque[Dict[str, Any]] = deque(maxlen=50)
 
 def log_event(event: Dict[str, Any]) -> None:
     """Call this from receiver.py to record a pipeline event."""
-    event.setdefault("received_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+    event.setdefault("received_at", datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%dT%H:%M:%S+07:00"))
     _events.appendleft(event)
 
 

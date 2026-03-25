@@ -6,6 +6,7 @@ If the LLM call fails, the raw STT text is forwarded unchanged.
 """
 
 import logging
+import re
 from llm.typhoon_client import TyphoonClient
 
 logger = logging.getLogger(__name__)
@@ -16,25 +17,25 @@ _MIN_CHARS = 15
 
 _SYSTEM = (
     "คุณคือ STT Text Normalizer สำหรับระบบหุ่นยนต์ภาษาไทย\n"
-    "หน้าที่ของคุณคือทำความสะอาดข้อความที่ถอดเสียงมาจาก STT เท่านั้น\n"
-    "ไม่ใช่นักเขียน ไม่ใช่ผู้แก้ไขภาษา — แค่แก้คำที่ STT ฟังผิดหรือสะกดผิด\n\n"
+    "หน้าที่ของคุณคือทำความสะอาดข้อความที่ถอดเสียงมาจากคนพูดเท่านั้น\n"
+    "คุณไม่ใช่นักเขียน ไม่ใช่ผู้แก้ไขภาษา — แค่แก้คำที่ผิดหรือสะกดผิด\n\n"
     "กฎสำคัญ:\n"
-    "- รักษารูปแบบและโทนของต้นฉบับ 100% (ภาษาพูดให้คงเป็นภาษาพูด)\n"
+    "- รักษารูปแบบและโทนของต้นฉบับ (ภาษาพูดให้คงเป็นภาษาพูด)\n"
     "- ถ้าต้นฉบับไม่มีคำลงท้าย (ครับ/ค่ะ/นะ) ห้ามเติม\n"
     "- ถ้าต้นฉบับมีคำลงท้าย ให้คงไว้ตามเดิม ห้ามเปลี่ยน\n"
     "- ห้ามเปลี่ยนความหมาย เพิ่มคำ หรือตัดทอนประโยค\n"
-    "- ห้ามตอบคำถาม ห้ามเพิ่มข้อมูลใดๆ — ถ้า input เป็นคำถาม ให้คืนคำถามนั้นกลับไปโดยแก้เฉพาะตัวสะกด\n"
+    "- ถ้าข้อความที่ถอดเสียงมาเป็นคำถาม ให้คืนคำถามนั้นกลับไปโดยแก้เฉพาะจุดที่ผิด\n"
     "- ตอบกลับเฉพาะข้อความที่แก้ไขแล้วเท่านั้น ห้ามอธิบาย\n\n"
-    "ตัวอย่าง:\n"
-    "Input:  ไปไหนมา\n"
+    "ตัวอย่างที่ต้องแก้ไข:\n"
+    "Input:  ไปไนมา\n"
     "Output: ไปไหนมา\n\n"
-    "Input:  ขอบคุณครับ\n"
+    "Input:  ชอบคุณครับ\n"
     "Output: ขอบคุณครับ\n\n"
     "Input:  วันนี้มีวิชาอาไรบ้าง\n"
     "Output: วันนี้มีวิชาอะไรบ้าง\n\n"
-    "Input:  หลักสูตร RAI มีวิชาอะไรบ้าง\n"
+    "Input:  หลักสูด RAI มีวิชาอะไรบ้าง\n"
     "Output: หลักสูตร RAI มีวิชาอะไรบ้าง\n\n"
-    "Input:  เราพบกันล่าสุดเมือไหร่นะ\n"
+    "Input:  เราพบกันลาสุดเมือไรนะ\n"
     "Output: เราพบกันล่าสุดเมื่อไหร่นะ"
 )
 
@@ -52,6 +53,9 @@ class GrammarCorrector:
             return raw_text
         if len(raw_text.strip()) < _MIN_CHARS:
             logger.debug("GrammarCorrector: short input (%d chars), skipping LLM", len(raw_text.strip()))
+            return raw_text
+        if not re.search(r"[\u0e00-\u0e7f]", raw_text):
+            logger.debug("GrammarCorrector: no Thai characters detected, skipping LLM")
             return raw_text
         try:
             corrected = self.llm.chat(

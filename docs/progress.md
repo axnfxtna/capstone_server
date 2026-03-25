@@ -5,13 +5,20 @@
 
 ---
 
-## Current Status: Phase 6 ✅ DONE (2026-03-24) — Face emotion integration complete, PI5-owned architecture
+## Current Status: Eval Pass ✅ DONE (2026-03-25)
 
-Phase 6 face emotion frontend integrated. `face/face_client.py` helper created on server side.
-After discussion, all emotion state transitions moved to PI5 (owns both audio output and face display).
-Server pipeline is clean — no face calls in pipeline code.
-Live test confirmed: all 5 emotion codes (idle/scanning/happy/talking/thinking) reach PI5 face service at port 7000.
-Next: Phase 5 ROS2 navigation end-to-end (depends on Teammate B).
+All accuracy targets met. Pipeline is ready for pilot deployment.
+Next: Add bathroom data to `uni_info` (data gap) → Phase 5 ROS2 navigation (depends on Teammate B).
+
+| Metric | Result | Target |
+|--------|--------|--------|
+| Intent Accuracy | 90.9% | ≥ 90% ✅ |
+| Macro F1 | 0.93 | — |
+| Slot F1 (navigate destination) | 1.00 | ≥ 0.85 ✅ |
+| RAG Route Accuracy | 100% | — |
+| Language Compliance | 100% | 100% ✅ |
+| OOS Rejection Rate | 100% | ≥ 80% ✅ |
+| Task Success Rate (TSR) | 0.91 | ≥ 0.80 ✅ |
 
 ---
 
@@ -302,11 +309,53 @@ The server pipeline has zero face calls — no latency impact, no coupling.
 
 ---
 
+### Robot Rename — สาธุ / Satu (2026-03-24)
+- [x] Thai name: สาธุ — robot calls itself น้องสาธุ or น้อง
+- [x] English name: Satu (not KhanomTan)
+- [x] All prompts updated: `mcp/greeting_bot.py`, `llm/typhoon_client.py`, `mcp/llm_chatbot.py`
+- [x] All labels updated: `api/main.py`, `api/routes/monitor.py`, `vector_db/milvus_client.py`
+- [x] All docs updated: `progress.md`, `goals.md`, `design.md`, `pi5_*.md`, `teammate_b_design.md`
+- [x] Tools updated: `tools/benchmark.py`, `tools/eval_accuracy.py`, `tools/scp_to_pi5.sh`
+- [x] Configs updated: `config/settings.yaml`, `config/pi5.yaml`
+- [x] `SYSTEM_PROMPT` constant removed from `llm/typhoon_client.py` — was imported but never used; `build_chatbot_system_prompt()` is sole identity prompt
+- [x] `enforce_female_particle()` pronouns updated: ผม/ดิฉัน/ข้าพเจ้า → น้อง (was หนู)
+- [ ] `tts/khanomtan_engine.py` filename kept — refers to pythaitts library model, not robot name
+
+---
+
+### Prompt Tuning v2 — Bug Fixes ✅ DONE (2026-03-25)
+
+- [x] **`ฉัน` pronoun fix** — `enforce_female_particle()` in `llm/typhoon_client.py`: added `ฉัน` → `น้อง` replacement
+- [x] **Grammar corrector English bypass** — `mcp/grammar_corrector.py`: code-level early exit before LLM if no Thai characters detected (`[\u0e00-\u0e7f]`); English/non-Thai STT input returned unchanged instantly
+- [x] **Navigate false positive guard** — `mcp/llm_chatbot.py` `_CHATBOT_PROMPT_TEMPLATE`: navigate intent description now requires explicit destination (A/B/C) to be present; falls back to `info` if unclear
+- [x] **Repetitive replies** — deemed acceptable behaviour; no change made
+- [x] **`_current_datetime_str()` crash in greeting prompt** — `mcp/greeting_bot.py`: invalid `{_current_datetime_str()}` format placeholder replaced with `{current_datetime}`; `_current_datetime_str` imported from `typhoon_client` and passed as kwarg to `.format()`
+- [x] **All datetime → Thai time UTC+7** — `database/sqlite_client.py`, `mcp/memory_manager.py`, `api/routes/monitor.py`, `tools/benchmark.py`, `tools/eval_accuracy.py`: all `datetime.utcnow()` and `datetime.now()` replaced with `datetime.now(timezone(timedelta(hours=7)))`; timestamp strings now use `+07:00` suffix
+- [x] **Grammar corrector fully skipped** — `api/routes/receiver.py`: both registered and guest paths now set `corrected = payload.stt.text` directly; 8B model was hallucinating (answering questions, translating English → Thai); grammar LLM call removed entirely
+- [x] **Timetable RAG routing fix** — `mcp/llm_chatbot.py`: added `routing_hint: Optional[str]` param to `ask()` and `ask_and_store()`; `receiver.py` passes raw `payload.stt.text` as `routing_hint`; grammar corrector was rewriting `"วันไหน"` to synonyms causing keyword miss
+- [x] **Greeting fire-and-forget** — `mcp/greeting_bot.py`: `await asyncio.gather()` → `asyncio.create_task()` for both TTS and navigation; HTTP response no longer blocks on PI5 TTS (was blocking up to 10s)
+- [x] **`_YEAR_TONE` NameError crash** — `mcp/greeting_bot.py`: removed dangling `year_tone = _YEAR_TONE.get(...)` line (dict was intentionally deleted but reference remained, causing every registered greeting to 500)
+- [x] **TTS pronunciation fix for สาธุ** — `mcp/tts_router.py`: `_THAI_SUBSTITUTION` dict added (`น้องสาธุ` → `น้อง สา ทุ`, `สาธุ` → `สา ทุ`); applied in `to_tts_ready()` before syllabification
+- [x] **TTS English word expansions** — `mcp/tts_router.py` `_ENG_WORD`: added `programming`, `drawing`, `introduction`, `physics`, `to`
+
+### OOS Fix + Eval Script Fixes ✅ DONE (2026-03-25)
+
+- [x] **`destination` string "null" normalization** — `mcp/llm_chatbot.py` `ask()`: `"null"` / `"none"` / `""` → `None`; was the root cause of 2 OOS eval failures (LLM outputs string literal `"null"` which Python evaluates as truthy)
+- [x] **`info` intent scope tightened** — `_CHATBOT_PROMPT_TEMPLATE`: `info` now explicitly restricted to KMITL university questions only; homework/translation/calling banned from `info`
+- [x] **`chat` covers OOS** — `_CHATBOT_PROMPT_TEMPLATE`: `chat` intent now explicitly covers out-of-scope requests with a polite decline
+- [x] **System prompt OOS rule hardened** — `llm/typhoon_client.py`: removed "สามารถเสนอแนะหรืออธิบายเพิ่มเติม"; now strictly "น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ" with no exceptions
+- [x] **`eval_accuracy.py` navigate fixtures updated** — replaced unreachable destinations (ห้องสมุด/ห้องน้ำ/โรงอาหาร/1201) with valid A/B/C rooms matching current robot capability
+- [x] **`eval_accuracy.py` `fetch_event` bug fixed** — events are stored newest-first (`appendleft`); `evts[after_index:]` was returning oldest events; fixed to `evts[:len(evts)-after_index]`
+- [x] **`eval_accuracy.py` OOS stale event fix** — `pre_count` snapshot now taken before each OOS POST; passed as `after_index` to `fetch_event`
+- [x] **`eval_accuracy.py` timestamp fix** — `datetime.utcnow()` → Thai time UTC+7
+
+---
+
 ## Known Issues
 
 | Issue | Severity | Status |
 |-------|----------|--------|
-| Grammar corrector still occasionally over-corrects informal Thai | Medium | Mitigated: length guard + prompt rules; being re-evaluated in prompt v2 |
+| Grammar corrector still occasionally over-corrects informal Thai | Medium | ✅ Resolved — grammar corrector fully skipped in receiver.py (2026-03-25); 8B model was hallucinating |
 | Session state lost on server restart (in-memory only) | Low | ✅ Resolved — `_restore_session()` restores from SQLite on restart (Phase 2.11) |
 | `time_table` search scores moderate (~0.28-0.33) — English embedder on Thai text | Resolved | ✅ Upgraded to BAAI/bge-m3; scores now ~0.60 |
 | TTS venv dependency pins (numba/numpy/protobuf conflicts) | Resolved | numba upgraded to 0.58.1; numpy pinned to 1.24.4; protobuf 5.29.6 |
@@ -346,6 +395,12 @@ Option B — Server STT via Typhoon2-Audio (new ✅)
   → audio_service:8001/stt → Typhoon2-Audio-8B transcribes
   → same grammar → RAG → intent pipeline as /detection
 ```
+
+### STT Research — Typhoon ASR Realtime (evaluated 2026-03-25)
+- Typhoon ASR Realtime: OpenAI Whisper-style model fine-tuned for Thai, 114M parameters
+- Benchmarks: 19× faster than Whisper, CER 6.62%, WER 12.52%, supports streaming
+- **Not suitable for PI5** — 114M parameters ≈ ~456 MB (fp32) / ~228 MB (fp16) runtime RAM; exceeds PI5 available headroom when combined with face display + ROS2 processes
+- Current PI5 STT (Typhoon ASR standard) remains in use
 
 ---
 

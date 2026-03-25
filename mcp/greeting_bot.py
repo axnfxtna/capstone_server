@@ -11,18 +11,18 @@ from typing import Optional
 
 import httpx
 
-from llm.typhoon_client import TyphoonClient, enforce_female_particle
+from llm.typhoon_client import TyphoonClient, enforce_female_particle, _current_datetime_str
 from mcp.tts_router import to_tts_ready, expand_for_tts
 
 logger = logging.getLogger(__name__)
 
 # Year-based tone descriptions in Thai
-_YEAR_TONE = {
-    1: "เน้นการต้อนรับสู่รั้วมหาวิทยาลัย ใช้คำที่ดูใจดีเหมือนพี่สาวดูแลน้อง",
-    2: "เน้นความกระตือรือร้น ถามไถ่เรื่องความท้าทายในวิชาที่เริ่มหนักขึ้น",
-    3: "เน้นความเอาใจใส่ ถามเรื่องความพร้อมหรือความตื่นเต้นในการหาที่ฝึกงาน",
-    4: "คุยแบบเป็นกันเองและให้กำลังใจที่ใกล้เรียนจบ",
-}
+# _YEAR_TONE = {
+#     ปี 1: "เน้นการต้อนรับสู่รั้วมหาวิทยาลัย ใช้คำที่ดูใจดีเหมือนพี่สาวดูแลน้อง",
+#     ปี 2: "เน้นความกระตือรือร้น ถามไถ่เรื่องความท้าทายในวิชาที่เริ่มหนักขึ้น",
+#     ปี 3: "เน้นความเอาใจใส่ ถามเรื่องความพร้อมหรือความตื่นเต้นในการหาที่ฝึกงาน",
+#     ปี 4: "คุยแบบเป็นกันเองและให้กำลังใจที่ใกล้เรียนจบ",
+# }
 
 _TIME_OF_DAY = {
     "เช้า":      range(6, 12),
@@ -46,8 +46,8 @@ _STRANGER_GREETING_PROMPT = """\
 คุณคือ "น้องสาธุ" หุ่นยนต์บริการหญิงของ KMITL ที่ตึก E-12 ชั้น 12
 ช่วงเวลา: {time_of_day}
 
-กฎเคร่งครัด:
-- ใช้ "หนู" แทนตัวเอง ใช้ "ค่ะ" ลงท้ายเสมอ ห้ามใช้ "ข้าพเจ้า" หรือ "ดิฉัน"
+กฎที่ต้องปฏิบัติเสมอ:
+- ใช้ "น้องสาธุ" แทนตัวเองและใช้ "ค่ะ" ลงท้ายเสมอ
 - ตอบ 1 ประโยคเท่านั้น ห้ามเกิน 1 ประโยค
 - ทักทายตามช่วงเวลา + แนะนำชื่อ รวมในประโยคเดียวสั้นๆ
 - ห้ามถามชื่อ ห้ามถามคำถามซ้อนคำถาม ห้ามบอกความสามารถของตัวเองในการทักทาย
@@ -59,22 +59,19 @@ _STRANGER_GREETING_PROMPT = """\
 {{"greeting_text": "..."}}
 """
 
-_GREETING_PROMPT = """\
-คุณคือ "น้องสาธุ" หุ่นยนต์บริการหญิงของ KMITL (บุคลิก: สุภาพ ร่าเริง ช่างสังเกต)
-กฎการพูด: ใช้ "ค่ะ" เสมอ ตอบ 1 ประโยคสั้นๆ เพื่อ TTS ที่รวดเร็ว
+_GREETING_PROMPT = """
+คุณคือ "น้องสาธุ" หุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง หรือเรียกสั้นๆ ว่า ลาดกระบัง
+คุณกำลังพูดคุยกับ {student_name}
+ปัจจุบัน: {current_datetime}
+ความจำจากบทสนทนาครั้งก่อน: {memory_summary}
+สถานการณ์ปัจจุบัน: คุณกำลังทักทายนักศึกษาที่คุณเพิ่งเจอ
 
-นักศึกษา: {student_name} (ปี {student_year})
-โทนการพูด: {year_tone}
-ช่วงเวลา: {time_of_day}
-ความจำจากครั้งก่อน: {memory_summary}
-
-Constraint:
+กฎที่ต้องปฏิบัติเสมอ:
 - ตอบ 1 ประโยคสั้นๆ เท่านั้น ห้ามเกิน 1 ประโยคโดยเด็ดขาด ห้ามต่อประโยคด้วยคำเชื่อม
 - ถ้ามีความจำ ให้ทักทาย + กล่าวถึงเรื่องนั้นกว้างๆ ในประโยคเดียว
-- ถ้าไม่มีความจำ ให้ถามแบบเปิดกว้างเหมือนเพื่อนคุยกัน เช่น "เป็นยังไงบ้างคะ" "ช่วงนี้เป็นไงบ้างคะ" "วันนี้เหนื่อยไหมคะ"
-- ห้ามถามตรงๆ ว่า "มีความสุขไหม" หรือ "มีความสุขกับ..." เพราะฟังดูเหมือนหุ่นยนต์
-- ห้ามใช้นามสกุลหรือวงเล็บ
-- ห้ามพูดถึงความสามารถของตัวเองในการทักทาย
+- ถ้าไม่มีความจำ ให้ถามแบบเปิดกว้างเหมือนเพื่อนคุยกัน เช่น "เป็นยังไงบ้างคะ" "ช่วงนี้เป็นไงบ้างคะ" 
+- ให้เรียกชื่อนักศึกษาว่า "{student_name}" เท่านั้น ห้ามใช้นามสกุลหรือวงเล็บ
+- ห้ามพูดถึงความสามารถของตัวเอง
 
 ตอบกลับเป็น JSON เท่านั้น:
 {{
@@ -125,14 +122,10 @@ class GreetingBot:
             except Exception as exc:
                 logger.warning("Memory retrieve failed at greeting: %s", exc)
 
-        year_tone = _YEAR_TONE.get(student_year, _YEAR_TONE[1])
-
         # 2. Generate greeting via LLM
         prompt = _GREETING_PROMPT.format(
             student_name=student_name,
-            student_year=student_year,
-            year_tone=year_tone,
-            time_of_day=_get_time_of_day(),
+            current_datetime=_current_datetime_str(),
             memory_summary=memory_summary,
         )
         parsed = self.llm.generate_structured(prompt, temperature=0.7, max_tokens=64)
@@ -146,12 +139,9 @@ class GreetingBot:
         expanded = expand_for_tts(greeting_text)
         tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
 
-        # 3. Fire TTS + ROS2 stop in parallel
-        await asyncio.gather(
-            self._send_tts(tts_text),
-            self._send_navigation("stop_roaming"),
-            return_exceptions=True,
-        )
+        # 3. Fire TTS + ROS2 stop — non-blocking, response returns immediately
+        asyncio.create_task(self._send_tts(tts_text))
+        asyncio.create_task(self._send_navigation("stop_roaming"))
 
         # Return (original_text, tts_text) so caller can log the clean Thai
         return greeting_text, tts_text
@@ -173,11 +163,8 @@ class GreetingBot:
         expanded = expand_for_tts(greeting_text)
         tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
 
-        await asyncio.gather(
-            self._send_tts(tts_text),
-            self._send_navigation("stop_roaming"),
-            return_exceptions=True,
-        )
+        asyncio.create_task(self._send_tts(tts_text))
+        asyncio.create_task(self._send_navigation("stop_roaming"))
         return greeting_text
 
     # ------------------------------------------------------------------

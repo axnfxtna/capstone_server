@@ -138,12 +138,16 @@ if r2:
 # 3. /greeting — unknown person (should skip)
 # ─────────────────────────────────────────────────────────────────────
 print("\n" + "=" * 60)
-print("3. /greeting — unknown person (should skip)")
+print("3. /greeting — unknown person (should greet as stranger)")
 print("=" * 60)
 
 r3 = post("/greeting", greeting_payload(person_id="Unknown", is_registered=False))
 if r3:
-    check("Unknown person returns skipped", r3.json().get("status") == "skipped", str(r3.json()))
+    data3 = r3.json()
+    check("Unknown person returns stranger", data3.get("status") == "stranger", str(data3))
+    greeting3 = data3.get("greeting_text", "")
+    check("Stranger greeting non-empty", bool(greeting3), repr(greeting3[:100]))
+    check("Stranger greeting uses ค่ะ", "ค่ะ" in greeting3, repr(greeting3[:120]))
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -260,11 +264,11 @@ print("\n" + "=" * 60)
 print("9. /detection — navigation intent")
 print("=" * 60)
 
-r9 = post("/detection", det("พาไปห้องสมุดหน่อย"))
+r9 = post("/detection", det("พาไปห้อง A หน่อย"))
 if r9:
     check("Navigation query returns 200", r9.status_code == 200)
     time.sleep(1)
-    evt = recent_event("stt_raw", "ห้องสมุด")
+    evt = recent_event("stt_raw", "ห้อง A")
     if evt:
         intent = evt.get("intent", "")
         reply = evt.get("reply_text", "")
@@ -312,7 +316,7 @@ r11 = post("/detection", det("สวัสดีครับ", person={
 }))
 if r11:
     check("Unregistered returns 200", r11.status_code == 200)
-    check("active=0 for unregistered", r11.json().get("active") == 0, str(r11.json()))
+    check("Guest pipeline runs (active=1)", r11.json().get("active") == 1, str(r11.json()))
 
 
 # ─────────────────────────────────────────────────────────────────────

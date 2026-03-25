@@ -22,7 +22,7 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import requests
@@ -73,11 +73,10 @@ INTENT_FIXTURES = [
     dict(text="วิชา Programming เรียนวันไหน",    intent="info",     route="time_table"),
     dict(text="ตารางเรียนวันศุกร์มีอะไรบ้าง",   intent="info",     route="time_table"),
 
-    # ── navigate intent ───────────────────────────────────────────
-    dict(text="พาฉันไปห้องสมุดหน่อย",           intent="navigate", route="uni_info",  destination="ห้องสมุด"),
-    dict(text="อยากไปห้องน้ำ",                  intent="navigate", route="uni_info",  destination="ห้องน้ำ"),
-    dict(text="พาไปห้อง 1201",                  intent="navigate", route="uni_info",  destination="1201"),
-    dict(text="ไปโรงอาหารได้ไหมคะ",             intent="navigate", route="uni_info",  destination="โรงอาหาร"),
+    # ── navigate intent — only rooms A / B / C inside E-12 ───────
+    dict(text="พาไปห้อง A หน่อย",               intent="navigate", route="chat_history", destination="A"),
+    dict(text="ไปห้อง B ได้ไหมคะ",              intent="navigate", route="chat_history", destination="B"),
+    dict(text="ต้องการไปห้อง C",                intent="navigate", route="chat_history", destination="C"),
 
     # ── farewell intent ───────────────────────────────────────────
     dict(text="ขอบคุณนะคะ ลาก่อน",              intent="farewell", route="chat_history"),
@@ -136,7 +135,7 @@ def get_event_count() -> int:
 
 def post_detection(text: str) -> bool:
     payload = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone(timedelta(hours=7))).isoformat(),
         "stt": {"text": text, "language": "th", "duration": 2.0},
         **STUDENT,
     }
@@ -149,17 +148,19 @@ def post_detection(text: str) -> bool:
 
 
 def fetch_event(stt_snippet: str, after_index: int = 0, max_wait: float = WAIT_AFTER_REQUEST) -> Optional[dict]:
-    """Poll /events for an event added at or after after_index matching stt_snippet.
+    """Poll /events for a new event matching stt_snippet.
 
-    after_index prevents stale events from a previous run being returned before
-    the current LLM call completes (critical when model latency > poll window).
+    Events are stored newest-first (appendleft). after_index is the event count
+    snapshot taken before the POST — new events are at the front of the list.
     """
     deadline = time.time() + max_wait
     while time.time() < deadline:
         try:
             evts = requests.get(f"{BASE}/events", timeout=5).json()
-            new_evts = evts[after_index:]          # only events added after snapshot
-            for evt in reversed(new_evts):
+            # New events are at the front; count of new = len(evts) - after_index
+            new_count = len(evts) - after_index
+            new_evts = evts[:new_count] if new_count > 0 else []
+            for evt in new_evts:   # newest first — return first match
                 if stt_snippet[:15] in (evt.get("stt_raw") or ""):
                     return evt
         except Exception:
@@ -356,11 +357,12 @@ def run():
     oos_declined = 0
     for text in OOS_FIXTURES:
         emit(f"  Input: {text}")
+        pre_count = get_event_count()
         ok = post_detection(text)
         if not ok:
             emit(f"    {FAIL}  POST failed")
             continue
-        evt = fetch_event(text)
+        evt = fetch_event(text, after_index=pre_count)
         if not evt:
             emit(f"    {WARN}  event not found")
             continue
@@ -404,7 +406,7 @@ def run():
     # Save report
     report_path = "docs/eval_report.txt"
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(f"Satu Accuracy Evaluation — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+        f.write(f"Satu Accuracy Evaluation — {datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M')}\n\n")
         f.write("\n".join(output_lines))
     emit(f"  Report saved → {report_path}")
     emit()

@@ -22,7 +22,7 @@ import sys
 import time
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 import requests
@@ -253,7 +253,7 @@ def run():
     # Save report
     report_path = "docs/benchmark_report.txt"
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(f"Satu Latency Benchmark — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+        f.write(f"Satu Latency Benchmark — {datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M')}\n\n")
         f.write("\n".join(output_lines))
     emit(f"  Report saved → {report_path}")
     emit()
