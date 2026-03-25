@@ -94,6 +94,11 @@ All Phase 1 items are complete. The full pipeline runs with live PI 5 traffic.
 - [x] Pipeline: sidecar STT → same grammar → RAG → intent flow as `/detection`
 - [x] `tts/typhoon_audio_tts.transcribe()` — async STT client helper
 
+### Sidecar Bugfix ✅ DONE (2026-03-25)
+- [x] **Event-loop blocking** — `audio_service/main.py`: `asyncio.to_thread()` wraps both `synthesize()` and `transcribe()`; GPU calls no longer freeze the uvicorn event loop; concurrent requests and health checks remain responsive during model inference
+- [x] **STT client timeout** — `tts/typhoon_audio_tts.py`: `transcribe()` timeout `30s → 90s`; large audio blobs (271KB, 492KB) were timing out exactly at 30s
+- [x] **TTS client timeout** — `tts/typhoon_audio_tts.py`: `synthesize_and_send()` timeout `15s → 60s`; 8B model can exceed 15s for longer reply texts
+
 ---
 
 ## Phase 2.8 — Prompt Fine-tuning (All Models)

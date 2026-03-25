@@ -18,7 +18,7 @@ async def synthesize_and_send(
     text: str,
     pi5_base_url: str,
     sidecar_url: str = _DEFAULT_SIDECAR_URL,
-    timeout: float = 15.0,
+    timeout: float = 60.0,
 ) -> None:
     """
     1. POST text to audio sidecar /tts → receive WAV bytes
@@ -52,7 +52,7 @@ async def synthesize_and_send(
 async def transcribe(
     wav_bytes: bytes,
     sidecar_url: str = _DEFAULT_SIDECAR_URL,
-    timeout: float = 30.0,
+    timeout: float = 90.0,
 ) -> str:
     """
     POST WAV bytes to audio sidecar /stt → return transcribed text.

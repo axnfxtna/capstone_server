@@ -72,7 +72,7 @@ async def _push_nav_state(state: int, ros2_base_url: str, destination: Optional[
         return
     payload: dict = {"state": state}
     if destination:
-        payload["destination"] = destination
+        payload["dest"] = destination
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             await client.post(f"{ros2_base_url}/nav_state", json=payload)

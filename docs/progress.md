@@ -383,6 +383,14 @@ The server pipeline has zero face calls — no latency impact, no coupling.
 
 ---
 
+### Typhoon2-Audio Sidecar — Bugfix ✅ DONE (2026-03-25)
+
+- [x] **Event-loop blocking fixed** — `audio_service/main.py`: both `/tts` and `/stt` handlers now use `await asyncio.to_thread(...)` to run `synthesize()` and `transcribe()` in a thread pool; previously the synchronous GPU calls blocked the entire uvicorn event loop, causing all concurrent requests (including health checks) to queue and timeout
+- [x] **STT timeout raised** — `server/tts/typhoon_audio_tts.py` `transcribe()`: `timeout=30.0` → `timeout=90.0`; 271KB and 492KB audio files were hitting the 30s limit exactly
+- [x] **TTS timeout raised** — `server/tts/typhoon_audio_tts.py` `synthesize_and_send()`: `timeout=15.0` → `timeout=60.0`; 8B model synthesis can exceed 15s on longer texts
+
+---
+
 ## Known Issues
 
 | Issue | Severity | Status |
@@ -395,6 +403,7 @@ The server pipeline has zero face calls — no latency impact, no coupling.
 | STT confidence field removed | Resolved (2026-03-22) | Typhoon ASR has no real per-utterance beam score; `stt.confidence` removed from payload schema |
 | PI 5 60-second INACTIVE timeout | Resolved (Phase 2.7) | Race condition in `_send_event()` — `_set_inactive()` now called BEFORE `run_in_executor` |
 | Duplicate log lines in server.log | Resolved (2026-03-23) | `force=True` added to `logging.basicConfig()` in `api/main.py` |
+| Sidecar event-loop block + STT/TTS timeouts | Resolved (2026-03-25) | `asyncio.to_thread()` in sidecar handlers; timeouts raised to 90s (STT) / 60s (TTS) |
 
 ---
 

@@ -57,7 +57,7 @@ thresholds:
   stt_confidence: 0.6
 
 pi5_ros2:
-  host: "TBD"    # ← Teammate B fills this in when ROS2 PI5 IP is known
+  host: "10.26.13.128"
   port: 8767
 
 sqlite:
