@@ -231,26 +231,34 @@ Reference: `docs/design.md` sections 3.2–3.6.
 
 ---
 
-## Phase 5 — ROS2 Navigation Integration 🔜 NOT STARTED
+## Phase 5 — ROS2 Navigation Integration 🔧 SERVER DONE — Waiting on Teammate B
 
-The server already sends `POST /navigation` to PI 5 with `{ "cmd", "destination?" }`.
-The missing piece is the **PI 5 / ROS2 side**: receiving that call and actually driving the robot.
+Server-side nav state sending is complete. The robot can be commanded to stop, navigate, or resume roaming from within the pipeline. The remaining work is entirely on Teammate B's PI5 ROS2 service.
 
-### 5.1 PI 5 `/navigation` endpoint (Teammate B)
-- [ ] Confirm endpoint is live and accepts `{ "cmd": str, "destination": str? }`
-- [ ] `stop_roaming` → halts autonomous roaming behaviour
-- [ ] `resume_roaming` → restarts autonomous roaming (on farewell)
-- [ ] `go_to` + `destination` → translates Thai destination name → ROS2 nav goal
+### 5.0 Server-side nav state ✅ DONE (2026-03-25)
+- [x] `pi5_ros2` config block in `settings.yaml` — `host: "TBD"`, `port: 8767`
+- [x] `_push_nav_state(state, ros2_url, destination?)` helper — POST `{state: int}` to `/nav_state`; skipped silently when host is `"TBD"`; fire-and-forget, never blocks pipeline
+- [x] State mapping: 0 = stop/idle, 1 = resume roaming, 2 = navigate to destination
+- [x] `/greeting` registered → sends state 0 (stop roaming when student detected)
+- [x] navigate intent → sends state 2 + destination
+- [x] farewell intent → sends state 1 (resume roaming)
+- [x] Student-gone timeout (stage 2) → sends state 1 (resume roaming after silence)
 
-### 5.2 ROS2 Nav2 goal publishing
-- [ ] Destination name → map coordinate lookup table (e.g. `"ห้องสมุด"` → `(x, y, θ)`)
+### 5.1 PI 5 `/nav_state` endpoint (Teammate B — fill in `pi5_ros2.host` in `settings.yaml`)
+- [ ] Implement `POST /nav_state { "state": int, "destination"?: str }` on PI5 port 8767
+- [ ] state 0 → halt autonomous roaming
+- [ ] state 1 → resume autonomous roaming
+- [ ] state 2 → navigate to `destination` (A / B / C room name → ROS2 nav goal)
+
+### 5.2 ROS2 Nav2 goal publishing (Teammate B)
+- [ ] Destination name → map coordinate lookup table (A/B/C → `(x, y, θ)`)
 - [ ] Publish `geometry_msgs/PoseStamped` or call Nav2 `NavigateToPose` action
-- [ ] Handle goal rejection / unreachable destination — send error reply back to server or speak fallback
+- [ ] Handle goal rejection / unreachable destination
 
 ### 5.3 End-to-end navigation test
-- [ ] Ask robot `"พาฉันไปห้องสมุด"` → server routes → PI 5 `/navigation` → robot moves ✅
-- [ ] Ask robot `"พาฉันไปห้อง 12-01"` → room-number destination resolves correctly
-- [ ] Farewell → `resume_roaming` → robot resumes patrolling
+- [ ] Ask robot `"พาไปห้อง A"` → server routes → PI5 `/nav_state` state=2 → robot moves
+- [ ] Farewell → state=1 → robot resumes patrolling
+- [ ] Student-gone timeout → state=1 → robot resumes patrolling
 
 ---
 
@@ -372,6 +380,30 @@ Second pass on all LLM prompts, informed by real conversation logs.
 
 ---
 
+## ROS2 Nav State + Student-Gone Timeout ✅ DONE (2026-03-25)
+
+### Nav state sending
+- [x] `_push_nav_state(state, ros2_url, destination?)` — fire-and-forget; skipped when `pi5_ros2.host = "TBD"`
+- [x] Integrated into `/greeting` (state 0), navigate intent (state 2), farewell intent (state 1), gone timeout stage 2 (state 1)
+- [x] `pi5_ros2` config block in `settings.yaml` — Teammate B fills in `host`
+
+### Student-gone inactivity timeout
+- [x] Split 15 + 15s: reprompt after 15s silence → roam after 15s more
+- [x] `_session_gone_timeout()` coroutine: stage 1 TTS `"ยังอยู่ที่นี่ไหมคะ"`, stage 2 TTS `"ไว้เจอกันใหม่นะคะ"` + nav state 1 + session drop
+- [x] `_reset_gone_timer()` / `_cancel_gone_timer()` called on every detection + farewell
+- [x] Commercial robot research: Pepper 5s vision / Alexa 8s / kiosk 30–60s — 15+15s within HRI norms
+
+### Farewell phrase consistency
+- [x] `"ไว้เจอกันใหม่นะคะ"` added to farewell intent description in `_CHATBOT_PROMPT_TEMPLATE` — LLM now uses this phrase
+- [x] Same phrase used in gone-timeout stage 2 — consistent experience whether student says farewell or walks away
+
+### OOS eval fixes
+- [x] `destination` string `"null"` normalized to `None` in `llm_chatbot.ask()` — was root cause of 2 eval failures
+- [x] `info` intent scope tightened; `chat` intent explicitly covers OOS with polite decline
+- [x] Navigate fixtures updated to valid A/B/C rooms; `fetch_event` slice direction fixed
+
+---
+
 ## Phase 3 — Polish (When Everything Works)
 
 - [ ] Replace in-memory session state with Redis (for restart resilience)
@@ -386,10 +418,16 @@ Second pass on all LLM prompts, informed by real conversation logs.
 
 ## Phase 4 — Real-World Test Suite & Technical Report
 
-### 4.1 Timing instrumentation ✅ DONE (2026-03-23)
+### 4.1 Timing instrumentation ✅ DONE (2026-03-25, refactored)
 - [x] `time.perf_counter()` wraps each stage in `receiver.py` `/detection` handler
-- [x] Per-stage ms logged: grammar / llm / tts / total — visible in server console + `/events`
+- [x] Per-stage ms logged and visible in server console + `/events` monitor
 - [x] Stage progress logs: `▶`/`✔` lines show each stage starting and finishing in real time
+- [x] **Timing refactored (2026-03-25)** — grammar stage removed (skipped entirely); TTS removed (fire-and-forget); replaced with sub-timing inside `llm_chatbot.ask()`:
+  - `rag` ms — Milvus vector search
+  - `memory` ms — conversation memory retrieval
+  - `llm` ms — LLM inference
+  - `total` ms — full pipeline wall time
+- [x] Monitor bars updated: `rag` / `memory` / `llm` colour-coded bars (replaces old grammar/tts)
 
 ---
 

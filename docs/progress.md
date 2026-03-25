@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: Eval Pass ✅ DONE (2026-03-25)
+## Current Status: ROS2 Nav Integration + Pipeline Polish ✅ DONE (2026-03-25)
 
 All accuracy targets met. Pipeline is ready for pilot deployment.
 Next: Add bathroom data to `uni_info` (data gap) → Phase 5 ROS2 navigation (depends on Teammate B).
@@ -348,6 +348,38 @@ The server pipeline has zero face calls — no latency impact, no coupling.
 - [x] **`eval_accuracy.py` `fetch_event` bug fixed** — events are stored newest-first (`appendleft`); `evts[after_index:]` was returning oldest events; fixed to `evts[:len(evts)-after_index]`
 - [x] **`eval_accuracy.py` OOS stale event fix** — `pre_count` snapshot now taken before each OOS POST; passed as `after_index` to `fetch_event`
 - [x] **`eval_accuracy.py` timestamp fix** — `datetime.utcnow()` → Thai time UTC+7
+
+---
+
+### ROS2 Nav State + Student-Gone Timeout ✅ DONE (2026-03-25)
+
+#### ROS2 Nav State Sending
+- [x] **`pi5_ros2` config block** — `config/settings.yaml`: `host: "TBD"` (Teammate B fills in) + `port: 8767`
+- [x] **`_push_nav_state()` helper** — `api/routes/receiver.py`: async POST `{state: int, destination?: str}` to `{ros2_base_url}/nav_state`; skipped silently when host is `"TBD"`; errors caught and logged at WARNING level (non-blocking)
+- [x] **Navigate intent** → `_push_nav_state(2, ros2_url, destination)` fire-and-forget after LLM response
+- [x] **Farewell intent** → `_push_nav_state(1, ros2_url)` fire-and-forget + gone timer cancelled
+- [x] **`/greeting` registered path** → `_push_nav_state(0, ros2_url)` fire-and-forget (stop roaming when student detected)
+- [x] **State mapping**: 0 = stop/idle, 1 = resume roaming, 2 = navigate to destination
+
+#### Student-Gone Inactivity Timeout
+- [x] **Split timeout** — `config/settings.yaml`: `student_gone_reprompt_seconds: 15` + `student_gone_roam_seconds: 15` (replaces single `student_gone_timeout_seconds: 30`)
+- [x] **`_session_gone_timeout()` coroutine** — `api/routes/receiver.py`:
+  - Stage 1: sleep 15s → if session still active → fire-and-forget TTS `"ยังอยู่ที่นี่ไหมคะ"`
+  - Stage 2: sleep 15s more → if session still active → TTS `"ไว้เจอกันใหม่นะคะ"` + `_push_nav_state(1)` + `_sessions.pop()`
+  - Coroutine cancelled cleanly on `asyncio.CancelledError`
+- [x] **`_reset_gone_timer()` / `_cancel_gone_timer()` helpers** — cancel and restart the coroutine on every new voice input; called in `/detection` after each pipeline run
+- [x] **Timer started on `/greeting`** — restarted on every `/detection` event; cancelled on farewell intent
+- [x] **Research backing**: Pepper robot (5s vision), Alexa (8s per reprompt), commercial kiosks (30–60s); 15+15s split matches HRI best practice — active farewell before silent session drop
+
+#### Farewell Phrase
+- [x] **`"ไว้เจอกันใหม่นะคะ"`** — added as explicit example to `farewell` intent description in `_CHATBOT_PROMPT_TEMPLATE` (`mcp/llm_chatbot.py`)
+- [x] **Same phrase used in timeout** — `_session_gone_timeout()` sends `"ไว้เจอกันใหม่นะคะ"` as the final TTS before session drop; consistent user experience
+
+#### Pipeline Timing Refactor
+- [x] **Sub-timing in `llm_chatbot.ask()`** — `mcp/llm_chatbot.py`: `import time` added; `t_rag`, `t_memory`, `t_llm` measured around each operation; returned as `"timing_ms": {"rag": int, "memory": int, "llm": int}` in response dict
+- [x] **`receiver.py` timing cleaned up** — removed `t_grammar` and `t_tts` variables (grammar skipped, TTS fire-and-forget); timing log now: `"⏱  pipeline [%s] rag=%dms  memory=%dms  llm=%dms  total=%.0fms"`
+- [x] **Log stages renamed** — `[1/3 grammar]` / `[2/3 llm]` / `[3/3 tts]` → `[1/2 llm]` / `[2/2 tts]`
+- [x] **Monitor timing bars updated** — `api/routes/monitor.py`: replaced `grammar` + `tts` bars with `rag` / `memory` / `llm` bars (max scales: rag=2000ms, memory=1000ms, llm=10000ms)
 
 ---
 

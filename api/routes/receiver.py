@@ -60,6 +60,87 @@ async def _push_active(state: int, pi5_base_url: str) -> None:
         logger.warning("_push_active failed: %s", exc)
 
 
+async def _push_nav_state(state: int, ros2_base_url: str, destination: Optional[str] = None) -> None:
+    """
+    Push navigation state to Teammate B's ROS2 PI5 service (fire-and-forget).
+
+    state: 0 = stop, 1 = roam, 2 = navigate (destination required)
+    Skipped silently if ros2_base_url contains 'TBD' (not yet configured).
+    """
+    if "TBD" in ros2_base_url:
+        logger.debug("_push_nav_state skipped — pi5_ros2.host not configured")
+        return
+    payload: dict = {"state": state}
+    if destination:
+        payload["destination"] = destination
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(f"{ros2_base_url}/nav_state", json=payload)
+        logger.debug("Pushed nav_state=%d dest=%s to ROS2 PI5", state, destination)
+    except Exception as exc:
+        logger.warning("_push_nav_state failed: %s", exc)
+
+
+async def _session_gone_timeout(
+    person_id: str,
+    ros2_url: str,
+    speak_fn,
+    reprompt_seconds: int,
+    gone_seconds: int,
+) -> None:
+    """
+    Two-stage student-gone timer (fire-and-forget, stored per session).
+
+    Stage 1 — after reprompt_seconds silence:
+        Speak "ยังอยู่ที่นี่ไหมคะ" — assume paused, not gone.
+    Stage 2 — after gone_seconds more silence:
+        Speak farewell, push nav_state=1 (roam), drop session.
+
+    Cancelled cleanly whenever /detection or /greeting resets the timer.
+    """
+    try:
+        await asyncio.sleep(reprompt_seconds)
+        if person_id not in _sessions:
+            return
+        logger.info("Gone timer stage 1 [%s] — sending reprompt", person_id)
+        asyncio.create_task(speak_fn("ยังอยู่ที่นี่ไหมคะ"))
+
+        await asyncio.sleep(gone_seconds)
+        if person_id not in _sessions:
+            return
+        logger.info("Gone timer stage 2 [%s] — resuming roaming", person_id)
+        asyncio.create_task(speak_fn("ไว้เจอกันใหม่นะคะ"))
+        asyncio.create_task(_push_nav_state(1, ros2_url))
+        _sessions.pop(person_id, None)
+    except asyncio.CancelledError:
+        pass  # Reset by new activity or farewell — no action needed
+
+
+def _reset_gone_timer(
+    sess: dict,
+    person_id: str,
+    ros2_url: str,
+    speak_fn,
+    reprompt_seconds: int,
+    gone_seconds: int,
+) -> None:
+    """Cancel any running gone-timer for this session and start a fresh one."""
+    existing: Optional[asyncio.Task] = sess.get("_gone_timer")
+    if existing and not existing.done():
+        existing.cancel()
+    sess["_gone_timer"] = asyncio.create_task(
+        _session_gone_timeout(person_id, ros2_url, speak_fn, reprompt_seconds, gone_seconds)
+    )
+
+
+def _cancel_gone_timer(sess: dict) -> None:
+    """Cancel the gone-timer without starting a new one (used on farewell)."""
+    existing: Optional[asyncio.Task] = sess.get("_gone_timer")
+    if existing and not existing.done():
+        existing.cancel()
+    sess.pop("_gone_timer", None)
+
+
 def _clean_name(person_id: str) -> str:
     """Extract display name from person_id like 'Palm (Krittin Sakharin)' → 'Palm'."""
     name = person_id.split("(")[0].strip()
@@ -226,10 +307,23 @@ async def on_greeting(payload: GreetingPayload, request: Request):
         db_path=db_path,
     )
 
+    ros2_cfg = app_state.settings.get("pi5_ros2", {})
+    ros2_url = f"http://{ros2_cfg.get('host', 'TBD')}:{ros2_cfg.get('port', 8767)}"
+
     greeting_text, tts_text = await app_state.greeting_bot.greet(
         student_name=clean_name,
         student_id=student_id,
         student_year=student_year,
+    )
+    # Stop robot roaming when greeting a registered person (fire-and-forget)
+    asyncio.create_task(_push_nav_state(0, ros2_url))
+    # Start student-gone timer — robot resumes roaming if student goes quiet
+    sess_cfg = app_state.settings.get("session", {})
+    _reset_gone_timer(
+        sess, payload.person_id, ros2_url,
+        speak_fn=app_state.greeting_bot._send_tts,
+        reprompt_seconds=sess_cfg.get("student_gone_reprompt_seconds", 15),
+        gone_seconds=sess_cfg.get("student_gone_roam_seconds", 15),
     )
     # Seed session history with greeting so the first /detection reply has context
     sess["history"].append(("", greeting_text))
@@ -258,7 +352,8 @@ async def on_detection(payload: DetectionPayload, request: Request):
     app_state = request.app.state
     cfg = app_state.settings
 
-    pi5_url = f"http://{cfg['server']['pi5_ip']}:{cfg['server']['pi5_port']}"
+    pi5_url  = f"http://{cfg['server']['pi5_ip']}:{cfg['server']['pi5_port']}"
+    ros2_url = f"http://{cfg.get('pi5_ros2', {}).get('host', 'TBD')}:{cfg.get('pi5_ros2', {}).get('port', 8767)}"
 
     # PI 5 goes INACTIVE after posting /detection — server must push active=1
     # after the full pipeline to re-enable it, except on farewell (active=0).
@@ -291,15 +386,9 @@ async def on_detection(payload: DetectionPayload, request: Request):
         display_name = "ผู้มาเยือน"
 
         t_start = time.perf_counter()
-
-        logger.info("▶ [1/3 grammar ] %s — skipped (raw STT passed through)", display_name)
-        t0 = time.perf_counter()
         corrected = payload.stt.text
-        t_grammar = (time.perf_counter() - t0) * 1000
-        logger.info("✔ [1/3 grammar ] %.0fms — raw=%r", t_grammar, corrected)
 
-        logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
-        t0 = time.perf_counter()
+        logger.info("▶ [1/2 llm     ] %s — asking chatbot", display_name)
         # ask() only — skip memory store for guests
         response = app_state.chatbot.ask(
             question=corrected,
@@ -310,10 +399,11 @@ async def on_detection(payload: DetectionPayload, request: Request):
             history=sess["history"],
             routing_hint=payload.stt.text,
         )
-        t_llm = (time.perf_counter() - t0) * 1000
+        sub = response.get("timing_ms", {})
         logger.info(
-            "✔ [2/3 llm     ] %.0fms — rag=%s  intent=%s  reply=%r",
-            t_llm, response.get("rag_collection", "?"), response.get("intent", "?"),
+            "✔ [1/2 llm     ] rag=%dms memory=%dms llm=%dms — rag=%s intent=%s reply=%r",
+            sub.get("rag", 0), sub.get("memory", 0), sub.get("llm", 0),
+            response.get("rag_collection", "?"), response.get("intent", "?"),
             response.get("reply_text", "")[:60],
         )
 
@@ -331,11 +421,9 @@ async def on_detection(payload: DetectionPayload, request: Request):
             db_path=db_path,
         ))
 
-        logger.info("▶ [3/3 tts     ] %s — sending to PI 5", display_name)
-        t0 = time.perf_counter()
+        logger.info("▶ [2/2 tts     ] %s — sending to PI 5 (fire-and-forget)", display_name)
         route_result = await app_state.intent_router.route(response)
-        t_tts = (time.perf_counter() - t0) * 1000
-        logger.info("✔ [3/3 tts     ] %.0fms — routed=%s", t_tts, route_result.get("routed_to", []))
+        logger.info("✔ [2/2 tts     ] dispatched → %s", route_result.get("routed_to", []))
 
         t_total = (time.perf_counter() - t_start) * 1000
         await _push_active(1, pi5_url)
@@ -351,12 +439,7 @@ async def on_detection(payload: DetectionPayload, request: Request):
             "intent": response.get("intent", ""),
             "destination": response.get("destination"),
             "routed_to": route_result.get("routed_to", []),
-            "timing_ms": {
-                "grammar": round(t_grammar),
-                "llm": round(t_llm),
-                "tts": round(t_tts),
-                "total": round(t_total),
-            },
+            "timing_ms": {**sub, "total": round(t_total)},
             "status": "guest",
         })
         return ActivateResponse(active=1)
@@ -410,16 +493,10 @@ async def on_detection(payload: DetectionPayload, request: Request):
 
     t_start = time.perf_counter()
 
-    # 1. Grammar correction — skipped (8B model hallucinations outweigh benefit)
-    logger.info("▶ [1/3 grammar ] %s — skipped (raw STT passed through)", display_name)
-    t0 = time.perf_counter()
     corrected = payload.stt.text
-    t_grammar = (time.perf_counter() - t0) * 1000
-    logger.info("✔ [1/3 grammar ] %.0fms — raw=%r", t_grammar, corrected)
 
-    # 2. RAG chatbot
-    logger.info("▶ [2/3 llm     ] %s — asking chatbot", display_name)
-    t0 = time.perf_counter()
+    # 1. RAG chatbot (includes RAG fetch + memory retrieve + LLM inference)
+    logger.info("▶ [1/2 llm     ] %s — asking chatbot", display_name)
     response = await app_state.chatbot.ask_and_store(
         question=corrected,
         session_id=sess["session_id"],
@@ -429,10 +506,11 @@ async def on_detection(payload: DetectionPayload, request: Request):
         history=sess["history"],
         routing_hint=payload.stt.text,
     )
-    t_llm = (time.perf_counter() - t0) * 1000
+    sub = response.get("timing_ms", {})
     logger.info(
-        "✔ [2/3 llm     ] %.0fms — rag=%s  intent=%s  reply=%r",
-        t_llm, response.get("rag_collection", "?"), response.get("intent", "?"),
+        "✔ [1/2 llm     ] rag=%dms memory=%dms llm=%dms — rag=%s intent=%s reply=%r",
+        sub.get("rag", 0), sub.get("memory", 0), sub.get("llm", 0),
+        response.get("rag_collection", "?"), response.get("intent", "?"),
         response.get("reply_text", "")[:60],
     )
 
@@ -441,21 +519,39 @@ async def on_detection(payload: DetectionPayload, request: Request):
     if len(sess["history"]) > cfg["session"]["max_history_turns"]:
         sess["history"].pop(0)
 
-    # 3. Intent routing (TTS + ROS2 in parallel)
-    logger.info("▶ [3/3 tts     ] %s — sending to PI 5", display_name)
-    t0 = time.perf_counter()
+    # 2. Intent routing — TTS dispatched fire-and-forget
+    logger.info("▶ [2/2 tts     ] %s — sending to PI 5 (fire-and-forget)", display_name)
     route_result = await app_state.intent_router.route(response)
-    t_tts = (time.perf_counter() - t0) * 1000
-    logger.info("✔ [3/3 tts     ] %.0fms — routed=%s", t_tts, route_result.get("routed_to", []))
+    logger.info("✔ [2/2 tts     ] dispatched → %s", route_result.get("routed_to", []))
 
     t_total = (time.perf_counter() - t_start) * 1000
     logger.info(
-        "⏱  pipeline [%s] grammar=%.0fms  llm=%.0fms  tts=%.0fms  total=%.0fms",
-        payload.person_id, t_grammar, t_llm, t_tts, t_total,
+        "⏱  pipeline [%s] rag=%dms  memory=%dms  llm=%dms  total=%.0fms",
+        payload.person_id,
+        sub.get("rag", 0), sub.get("memory", 0), sub.get("llm", 0), t_total,
     )
 
+    # Push ROS2 navigation state based on intent (fire-and-forget)
+    intent = response.get("intent", "")
+    sess_cfg = cfg.get("session", {})
+    if intent == "navigate":
+        asyncio.create_task(_push_nav_state(2, ros2_url, destination=response.get("destination")))
+    elif intent == "farewell":
+        asyncio.create_task(_push_nav_state(1, ros2_url))
+
+    # Student-gone timer — reset on every turn, cancel on farewell
+    if intent == "farewell":
+        _cancel_gone_timer(sess)
+    else:
+        _reset_gone_timer(
+            sess, payload.person_id, ros2_url,
+            speak_fn=app_state.greeting_bot._send_tts,
+            reprompt_seconds=sess_cfg.get("student_gone_reprompt_seconds", 15),
+            gone_seconds=sess_cfg.get("student_gone_roam_seconds", 15),
+        )
+
     # Re-enable PI 5 for the next interaction — always push active=1 after pipeline.
-    if response.get("intent") == "farewell":
+    if intent == "farewell":
         _active = 0
     await _push_active(1, pi5_url)
 
@@ -471,12 +567,7 @@ async def on_detection(payload: DetectionPayload, request: Request):
         "intent": response.get("intent", ""),
         "destination": response.get("destination"),
         "routed_to": route_result.get("routed_to", []),
-        "timing_ms": {
-            "grammar": round(t_grammar),
-            "llm": round(t_llm),
-            "tts": round(t_tts),
-            "total": round(t_total),
-        },
+        "timing_ms": {**sub, "total": round(t_total)},
         "status": "ok",
     })
     return ActivateResponse(active=1)

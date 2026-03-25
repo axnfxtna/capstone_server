@@ -134,9 +134,9 @@ _HTML = """<!DOCTYPE html>
           return '<span style="display:inline-block;width:' + pct.toFixed(0) + 'px;height:8px;background:' + col + ';border-radius:2px;vertical-align:middle;margin-right:4px"></span>';
         };
         html += '<div class="row"><span class="label">timing</span><span class="value" style="color:#8b949e">' +
-          'grammar ' + bar(t.grammar,2000) + t.grammar + 'ms &nbsp;' +
-          'llm ' + bar(t.llm,10000) + t.llm + 'ms &nbsp;' +
-          'tts ' + bar(t.tts,5000) + t.tts + 'ms &nbsp;' +
+          'rag ' + bar(t.rag||0,2000) + (t.rag||0) + 'ms &nbsp;' +
+          'memory ' + bar(t.memory||0,1000) + (t.memory||0) + 'ms &nbsp;' +
+          'llm ' + bar(t.llm||0,10000) + (t.llm||0) + 'ms &nbsp;' +
           '<b style="color:#c9d1d9">total ' + t.total + 'ms</b>' +
           '</span></div>';
       }

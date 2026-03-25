@@ -22,6 +22,7 @@ Dataset collections searched (from final_docker_component):
 import asyncio
 import logging
 import re
+import time
 from typing import Dict, List, Optional, Tuple
 
 from llm.typhoon_client import TyphoonClient, build_chatbot_system_prompt, enforce_female_particle
@@ -226,7 +227,7 @@ intent ให้เลือกตามนี้:
 - chat     = ทักทาย | สนทนาเรื่องทั่วไป | คำขอที่อยู่นอกเหนือความสามารถของน้องสาธุ (ให้ตอบปฏิเสธสั้นๆ ด้วย intent=chat)
 - info     = ถามข้อมูลเกี่ยวกับสถาบันลาดกระบังเท่านั้น เช่น ตารางเรียน หลักสูตร สถานที่ในสถาบัน — ห้ามใช้กับคำขอทำงานให้ เช่น ทำการบ้าน แปลภาษา โทรหาคน
 - navigate = ต้องการไปยังสถานที่ในตึกสิบสอง ได้แก่ A | B | C → ใช้เฉพาะเมื่อนักศึกษาระบุ destination ชัดเจน ถ้าไม่มีชื่อห้องชัดเจนให้ใช้ info แทน reply_text ควรเป็นคำเชิญสั้นๆ เช่น "ตามน้องสาธุมาเลยค่ะ" โดยไม่ต้องพูดชื่อสถานที่ซ้ำ (ระบบจะนำทางเองอัตโนมัติ)
-- farewell = บอกลา | ไม่ต้องการความช่วยเหลือแล้ว
+- farewell = บอกลา | ไม่ต้องการความช่วยเหลือแล้ว → reply_text ควรเป็น "ไว้เจอกันใหม่นะคะ" หรือคล้ายกัน
 
 ตอบกลับเป็น JSON เท่านั้น รูปแบบ:
 {{
@@ -279,10 +280,14 @@ class LLMChatbot:
         collection = _route_query(routing_hint if routing_hint else question)
 
         # 2. RAG context from dataset
+        t0 = time.perf_counter()
         rag_context = _build_rag_context(question, collection, self.rag_top_k, self.mysql_cfg)
+        t_rag = (time.perf_counter() - t0) * 1000
 
         # 3. Conversation memory
+        t0 = time.perf_counter()
         memory_summary = self.memory.retrieve(question, student_id)
+        t_memory = (time.perf_counter() - t0) * 1000
 
         # 4. Format short-term history
         # Empty user turn ("", bot_text) means a greeting — show only the bot line
@@ -306,7 +311,9 @@ class LLMChatbot:
         )
 
         # 7. Call LLM
+        t0 = time.perf_counter()
         parsed = self.llm.generate_structured(prompt, temperature=0.7, max_tokens=512)
+        t_llm = (time.perf_counter() - t0) * 1000
         if not parsed or "reply_text" not in parsed:
             logger.warning("LLMChatbot: LLM returned no valid JSON — using fallback")
             return dict(_FALLBACK_RESPONSE)
@@ -328,6 +335,11 @@ class LLMChatbot:
             "intent":         parsed.get("intent", "chat"),
             "destination":    destination,
             "rag_collection": collection,
+            "timing_ms": {
+                "rag":    round(t_rag),
+                "memory": round(t_memory),
+                "llm":    round(t_llm),
+            },
         }
 
     # ------------------------------------------------------------------

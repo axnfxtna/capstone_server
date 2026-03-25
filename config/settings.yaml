@@ -48,11 +48,17 @@ session:
   greeting_cooldown_seconds: 300
   session_timeout_seconds: 1800        # registered persons — 30 min
   guest_session_timeout_seconds: 300   # unknown persons — 5 min
+  student_gone_reprompt_seconds: 15    # silence before "ยังอยู่ที่นี่ไหมคะ" reprompt
+  student_gone_roam_seconds: 15        # silence after reprompt before resuming roam
   max_history_turns: 5
 
 thresholds:
   detection_confidence: 0.75
   stt_confidence: 0.6
+
+pi5_ros2:
+  host: "TBD"    # ← Teammate B fills this in when ROS2 PI5 IP is known
+  port: 8767
 
 sqlite:
   db_path: "./database/metadata.db"
