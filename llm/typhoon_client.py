@@ -86,13 +86,21 @@ def enforce_female_particle(text: str) -> str:
 _THAI_DAYS = {0: "จันทร์", 1: "อังคาร", 2: "พุธ", 3: "พฤหัสบดี",
               4: "ศุกร์", 5: "เสาร์", 6: "อาทิตย์"}
 
+_THAI_MONTHS = {
+    1: "มกราคม", 2: "กุมภาพันธ์", 3: "มีนาคม", 4: "เมษายน",
+    5: "พฤษภาคม", 6: "มิถุนายน", 7: "กรกฎาคม", 8: "สิงหาคม",
+    9: "กันยายน", 10: "ตุลาคม", 11: "พฤศจิกายน", 12: "ธันวาคม",
+}
+
 
 def _current_datetime_str() -> str:
     from datetime import datetime, timezone, timedelta
     tz_thai = timezone(timedelta(hours=7))
     now = datetime.now(tz_thai)
     day_th = _THAI_DAYS[now.weekday()]
-    return f"วัน{day_th} เวลา {now.strftime('%H:%M')} น."
+    month_th = _THAI_MONTHS[now.month]
+    year_be = now.year + 543          # Buddhist Era (พ.ศ.)
+    return f"วัน{day_th}ที่ {now.day} {month_th} พ.ศ. {year_be} เวลา {now.strftime('%H:%M')} น."
 
 
 def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
@@ -108,15 +116,17 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
         "- คุณทำงานประจำอยู่ที่ชั้น 12 ของตึก E-12 (ตึกสิบสอง) ในโซน D ของสถาบัน\n"
         "- ตึก E-12 คืออาคารเรียนรวม 12 ชั้น ของคณะวิศวกรรมศาสตร์ มีลานจอดรถอยู่ด้านหน้าและด้านข้างของตึก ทางฝั่งตรงข้ามมีโรงอาหารและร้านสะดวกซื้อ\n\n"
         "ความสามารถของคุณมีเพียง 3 อย่างเท่านั้น:\n"
-        "1. ทักทายนักศึกษาและพูดคุยในหัวข้อทั่วไป\n"
-        "2. ตอบคำถามเกี่ยวกับสถาบัน เช่น ตารางเรียน หลักสูตร\n"
-        "3. นำทางไปยังสถานที่ภายในตึกสิบสอง (E-12 Building) ได้แก่ห้อง A | B | C เท่านั้น\n\n"
+        "ข้อ 1. ทักทายและสนทนาทั่วไป\n"
+        "ข้อ 2. ตอบคำถามเกี่ยวกับสถาบัน เช่น ตารางเรียน หลักสูตร\n"
+        "ข้อ 3. นำทางภายในตึกสิบสอง (E-12) ได้แก่ห้อง A | B | C เท่านั้น\n\n"
         "กฎที่ต้องปฏิบัติเสมอ:\n"
         f"- ถ้าจะเรียกชื่อนักศึกษาให้ใช้ว่า \"{student_name}\" เท่านั้น ห้ามใส่นามสกุลหรือวงเล็บ\n"
         f"- ห้ามขึ้นต้นประโยคด้วยชื่อนักศึกษา (\"{student_name}\") ไม่ว่ากรณีใด\n"
         "- ตอบเป็นภาษาไทยเสมอ ไม่ว่านักศึกษาจะพูดภาษาใด\n"
         "- ตอบสั้น กระชับ ไม่เกิน 2 ประโยค เพราะข้อความจะถูกแปลงเป็นเสียงพูด\n"
-        
+        "- เมื่อสนทนาทั่วไป ให้ตอบเป็นกันเองตามธรรมชาติ ห้ามปฏิเสธ\n"
+        "- เมื่อถามว่าช่วยอะไรได้บ้าง ให้บอกว่าช่วยได้ 3 อย่าง: (1) สนทนาทั่วไป (2) ข้อมูลสถาบัน (3) นำทางในตึก\n"
+        "- เมื่อคำขออยู่นอกขอบเขต 3 อย่างนั้น (เช่น แปลภาษา ทำการบ้าน โทรหาคน) ให้ปฏิเสธสั้นๆเป็นกันเอง\n"
     )
 # "- ถ้าคำถามอยู่นอกเหนือความสามารถ 3 อย่างข้างต้น ให้ตอบว่า \"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ
 # ═══════════════════════════════════════════════════════════════════════
@@ -136,24 +146,49 @@ class TyphoonClient:
         base_url: str = "http://localhost:11434",
         model: str = "typhoon2-7b-instruct",
         timeout: int = 30,
+        temperature: float = 0.7,
+        max_tokens: int = 512,
+        top_k: int = 30,
+        top_p: float = 0.85,
+        repeat_penalty: float = 1.15,
+        num_ctx: int = 4096,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_k = top_k
+        self.top_p = top_p
+        self.repeat_penalty = repeat_penalty
+        self.num_ctx = num_ctx
+
+    def _base_options(self, temperature: float, max_tokens: int) -> dict:
+        """Shared Ollama options dict used by all generation methods."""
+        return {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "repeat_penalty": self.repeat_penalty,
+            "num_ctx": self.num_ctx,
+        }
 
     # ------------------------------------------------------------------
     def generate(
         self,
         prompt: str,
-        temperature: float = 0.5,
-        max_tokens: int = 512,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> str:
         """Single-turn prompt → response (no chat history)."""
+        temperature = temperature if temperature is not None else self.temperature
+        max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": self._base_options(temperature, max_tokens),
         }
         try:
             resp = requests.post(
@@ -172,18 +207,20 @@ class TyphoonClient:
     def chat(
         self,
         messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: int = 512,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> str:
         """
         Multi-turn chat interface.
         messages = [{"role": "system"|"user"|"assistant", "content": str}, ...]
         """
+        temperature = temperature if temperature is not None else self.temperature
+        max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": self._base_options(temperature, max_tokens),
         }
         try:
             resp = requests.post(
@@ -202,8 +239,8 @@ class TyphoonClient:
     def generate_structured(
         self,
         prompt: str,
-        temperature: float = 0.3,
-        max_tokens: int = 512,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Call LLM and parse JSON from the response.
@@ -211,12 +248,17 @@ class TyphoonClient:
         Handles responses wrapped in ```json ... ``` markdown blocks.
         Returns None if parsing fails.
         """
+        temperature = temperature if temperature is not None else max(self.temperature - 0.4, 0.1)
+        max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
+        # Use tighter top_k for JSON generation to reduce hallucinated keys
+        opts = self._base_options(temperature, max_tokens)
+        opts["top_k"] = min(self.top_k, 20)
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
             "format": "json",
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": opts,
         }
         try:
             resp = requests.post(

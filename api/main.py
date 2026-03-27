@@ -84,12 +84,24 @@ async def lifespan(app: FastAPI):
         base_url=llm_cfg["base_url"],
         model=llm_cfg["model"],
         timeout=llm_cfg["timeout"],
+        temperature=llm_cfg.get("temperature", 0.7),
+        max_tokens=llm_cfg.get("max_tokens", 512),
+        top_k=llm_cfg.get("top_k", 30),
+        top_p=llm_cfg.get("top_p", 0.85),
+        repeat_penalty=llm_cfg.get("repeat_penalty", 1.15),
+        num_ctx=llm_cfg.get("num_ctx", 4096),
     )
     fast_cfg = settings.get("llm_fast", llm_cfg)
     llm_fast = TyphoonClient(
         base_url=fast_cfg["base_url"],
         model=fast_cfg["model"],
         timeout=fast_cfg["timeout"],
+        temperature=fast_cfg.get("temperature", 0.3),
+        max_tokens=fast_cfg.get("max_tokens", 256),
+        top_k=fast_cfg.get("top_k", 30),
+        top_p=fast_cfg.get("top_p", 0.85),
+        repeat_penalty=fast_cfg.get("repeat_penalty", 1.1),
+        num_ctx=fast_cfg.get("num_ctx", 4096),
     )
     logger.info("LLM 70B: %s", llm_cfg["model"])
     logger.info("LLM  8B: %s", fast_cfg["model"])
