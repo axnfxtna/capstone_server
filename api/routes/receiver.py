@@ -57,7 +57,7 @@ async def _push_active(state: int, pi5_base_url: str) -> None:
             await client.post(f"{pi5_base_url}/set_active", json={"active": state})
         logger.debug("Pushed active=%d to PI 5", state)
     except Exception as exc:
-        logger.warning("_push_active failed: %s", exc)
+        logger.warning("_push_active failed: %r", exc)
 
 
 async def _push_nav_state(state: int, ros2_base_url: str, destination: Optional[str] = None) -> None:

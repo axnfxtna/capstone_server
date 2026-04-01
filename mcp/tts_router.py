@@ -38,6 +38,7 @@ _ENG_LETTER = {
 _ENG_WORD = {
     'email':        'อีเมล',
     'wifi':         'ไวไฟ',
+    'wi-fi':        'ไวไฟ',
     'zone':         'โซน',
     'credit':       'เครดิต',
     'credits':      'เครดิต',
@@ -60,6 +61,7 @@ _ENG_WORD = {
     'microprocessor': 'ไมโครโปรเซสเซอร์',
     'microcontroller': 'ไมโครคอนโทรลเลอร์',
     'interface': 'อินเทอร์เฟซ',
+    'and': 'แอนด์',
 }
 
 # Regex to split a token into letter-runs and digit-runs

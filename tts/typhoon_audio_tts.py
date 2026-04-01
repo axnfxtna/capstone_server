@@ -46,7 +46,7 @@ async def synthesize_and_send(
                 headers={"Content-Type": "audio/wav"},
             )
     except Exception as exc:
-        logger.error("PI 5 audio_play delivery failed: %s", exc)
+        logger.error("PI 5 audio_play delivery failed: %r", exc)
 
 
 async def transcribe(

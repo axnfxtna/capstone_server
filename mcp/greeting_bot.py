@@ -187,7 +187,7 @@ class GreetingBot:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     await client.post(url, json={"phoneme_text": to_tts_ready(text)})
         except Exception as exc:
-            logger.error("GreetingBot._send_tts failed: %s", exc)
+            logger.error("GreetingBot._send_tts failed: %r", exc)
 
     async def _send_navigation(self, cmd: str, destination: Optional[str] = None) -> None:
         """POST navigation command to PI 5 /navigation."""
@@ -199,4 +199,4 @@ class GreetingBot:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 await client.post(url, json=payload)
         except Exception as exc:
-            logger.error("GreetingBot._send_navigation failed: %s", exc)
+            logger.error("GreetingBot._send_navigation failed: %r", exc)
