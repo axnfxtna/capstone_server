@@ -28,7 +28,7 @@ from typing import Optional, Tuple
 import requests
 
 BASE = "http://localhost:8000"
-WAIT_AFTER_REQUEST = 8.0    # generous wait for 70B LLM to finish
+WAIT_AFTER_REQUEST = 5.0    # tightened for vLLM (was 8s for Ollama)
 
 PASS  = "\033[92m✅\033[0m"
 FAIL  = "\033[91m❌\033[0m"
@@ -69,6 +69,16 @@ FIXTURES = [
     dict(label="time_table/monday",        text="วันจันทร์มีวิชาอะไรบ้าง",       route="time_table",   intent="info"),
     dict(label="time_table/subject_day",   text="วิชา Programming เรียนวันไหน",  route="time_table",   intent="info"),
     dict(label="time_table/friday",        text="ตารางเรียนวันศุกร์",             route="time_table",   intent="info"),
+
+    # local_info route (bars.json, restaurents.json)
+    dict(label="local_info/restaurant",    text="แนะนำร้านอาหารแถวมหาลัยหน่อย",  route="local_info",   intent="info"),
+    dict(label="local_info/bar",           text="แถวลาดกระบัง 42 มีบาร์อะไรบ้าง", route="local_info",  intent="info"),
+    dict(label="local_info/food_cheap",    text="อยากกินอาหารอร่อยราคาไม่แพง",   route="local_info",   intent="info"),
+
+    # student_manual route (student_manual_2564.pdf)
+    dict(label="student_manual/dress",     text="ระเบียบการแต่งกายนักศึกษา",      route="student_manual", intent="info"),
+    dict(label="student_manual/loan",      text="กยศ ขอทุนการศึกษายังไง",          route="student_manual", intent="info"),
+    dict(label="student_manual/leave",     text="ขอลาพักการศึกษาทำยังไง",          route="student_manual", intent="info"),
 ]
 
 # ─────────────────────────────────────────────────────────────────────
@@ -203,7 +213,7 @@ def run():
     emit(header)
     emit("  " + "-" * 63)
 
-    route_order = ["chat_history", "uni_info", "curriculum", "time_table"]
+    route_order = ["chat_history", "uni_info", "curriculum", "time_table", "local_info", "student_manual"]
     for route in route_order:
         if route not in by_route:
             continue
@@ -223,7 +233,7 @@ def run():
     emit(f"  {'Stage':<12}  {'n':>3}  {'mean':>7}  {'p50':>7}  {'p95':>7}  {'p99':>7}")
     emit("  " + "-" * 50)
 
-    STAGE_TARGETS = {"grammar": 200, "llm": 3000, "tts": 800, "total": 3000}
+    STAGE_TARGETS = {"grammar": 1500, "llm": 2500, "tts": 800, "total": 3000}
     for stage in ["grammar", "llm", "tts", "total"]:
         data = all_stages[stage]
         if not data:

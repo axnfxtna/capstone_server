@@ -1,0 +1,106 @@
+Satu Latency Benchmark — 2026-04-02 22:51
+
+
+=================================================================
+  0. SERVER HEALTH
+=================================================================
+  ✅  {'status': 'ok', 'service': 'Satu AI Brain v2'}
+
+=================================================================
+  1. RUNNING 22 FIXTURES
+=================================================================
+  Wait per request: 5.0s   Student: ปาล์ม
+
+  [01/22] chat_history/greeting
+    grammar=     0ms  llm=  1921ms  tts=     0ms  total=  1946ms  intent='chat'
+    reply: 'สวัสดีค่ะ ยินดีให้บริการ'
+  [02/22] chat_history/casual
+    grammar=     0ms  llm=  2801ms  tts=     0ms  total=  2824ms  intent='chat'
+    reply: 'น้องสาธุเข้าใจนะคะ ถ้ามีอะไรให้ช่วยก็บอกได้เลยนะคะ'
+  [03/22] chat_history/identity
+    grammar=     0ms  llm=  3198ms  tts=     0ms  total=  3221ms  intent='chat'
+    reply: 'น้องสาธุคือหุ่นยนต์บริการหญิงประจำสถาบันเทคโนโลยีพระจอมเกล้า'
+  [04/22] chat_history/capabilities
+    grammar=     0ms  llm=  3270ms  tts=     0ms  total=  3299ms  intent='chat'
+    reply: 'น้องสาธุช่วยได้ 3 อย่างค่ะ คือ สนทนาทั่วไป, ข้อมูลสถาบัน, แล'
+  [05/22] chat_history/farewell
+    grammar=     0ms  llm=  2013ms  tts=     0ms  total=  2037ms  intent='farewell'
+    reply: 'ไว้เจอกันใหม่นะคะ'
+  [06/22] uni_info/bathroom
+    grammar=     0ms  llm=  2579ms  tts=     0ms  total=  2634ms  intent='info'
+    reply: 'น้องสาธุสามารถนำทางไปยังห้อง A | B | C เท่านั้นค่ะ'
+  [07/22] uni_info/zone
+    grammar=     0ms  llm=  2097ms  tts=     0ms  total=  2160ms  intent='info'
+    reply: 'ตึก E-12 อยู่ในโซน D ค่ะ'
+  [08/22] uni_info/canteen
+    grammar=     0ms  llm=  2155ms  tts=     0ms  total=  2218ms  intent='info'
+    reply: 'โรงอาหารอยู่ตรงข้ามตึก E-12 ค่ะ'
+  [09/22] uni_info/navigate
+    grammar=     0ms  llm=  2340ms  tts=     0ms  total=  2399ms  intent='chat'
+    reply: 'น้องสาธุไม่สามารถพาไปห้องสมุดได้ค่ะ'
+  [10/22] uni_info/navigate2
+    grammar=     0ms  llm=  2441ms  tts=     0ms  total=  2465ms  intent='info'
+    reply: 'น้องสาธุสามารถนำทางไปยังห้อง A | B | C เท่านั้นค่ะ'
+  [11/22] curriculum/credits
+    grammar=     0ms  llm=  2743ms  tts=     0ms  total=  2837ms  intent='info'
+    reply: 'หลักสูตร RAI มีจำนวนหน่วยกิตรวม 129 หน่วยกิตค่ะ'
+  [12/22] curriculum/year
+    grammar=     0ms  llm=  2452ms  tts=     0ms  total=  2546ms  intent='info'
+    reply: 'วิชา Programming เรียนในปีที่หนึ่งค่ะ'
+  [13/22] curriculum/duration
+    grammar=     0ms  llm=  2334ms  tts=     0ms  total=  2435ms  intent='info'
+    reply: 'หลักสูตร RAI ใช้เวลา 4 ปีจบค่ะ'
+  [14/22] time_table/monday
+    grammar=     0ms  llm=  2172ms  tts=     0ms  total=  2238ms  intent='info'
+    reply: 'วันจันทร์มีวิชา MICROPROCESSOR AND INTERFACE ค่ะ'
+  [15/22] time_table/subject_day
+    grammar=     0ms  llm=  2452ms  tts=     0ms  total=  2546ms  intent='info'
+    reply: 'วิชา Programming เรียนในปีที่หนึ่งค่ะ'
+  [16/22] time_table/friday
+    grammar=     0ms  llm=  4894ms  tts=     0ms  total=  4952ms  intent='info'
+    reply: 'วันศุกร์มีวิชา Intro to Calculus (RAI 2) เวลา 8:45 - 10:15, '
+  [17/22] local_info/restaurant
+    grammar=     0ms  llm=  3151ms  tts=     0ms  total=  3214ms  intent='info'
+    reply: 'แนะนำร้านนมมหาวิทยาลัย, ก๋วยเตี๋ยวในซอกมุม, และร้านยำหน้าร้า'
+  [18/22] local_info/bar
+    grammar=     0ms  llm=  2485ms  tts=     0ms  total=  2545ms  intent='chat'
+    reply: 'ไม่สามารถให้ข้อมูลบาร์ในแถวลาดกระบัง 42 ได้ค่ะ'
+  [19/22] local_info/food_cheap
+    grammar=     0ms  llm=  3200ms  tts=     0ms  total=  3261ms  intent='info'
+    reply: 'แนะนำร้านนมมหาวิทยาลัย, ก๋วยเตี๋ยวในซอกมุม, และร้านยำหน้าร้า'
+  [20/22] student_manual/dress
+    grammar=     0ms  llm=     0ms  tts=     0ms  total=    81ms  intent='chat'
+    reply: 'รบกวนพูดใหม่อีกทีได้มั้ยคะ'
+  [21/22] student_manual/loan
+    grammar=     0ms  llm=     0ms  tts=     0ms  total=    74ms  intent='chat'
+    reply: 'รบกวนพูดใหม่อีกทีได้มั้ยคะ'
+  [22/22] student_manual/leave
+    grammar=     0ms  llm=     0ms  tts=     0ms  total=    69ms  intent='chat'
+    reply: 'รบกวนพูดใหม่อีกทีได้มั้ยคะ'
+
+=================================================================
+  2. LATENCY BY RAG ROUTE  (ms)
+=================================================================
+  Route                             n     mean      p50      p95      p99
+  ---------------------------------------------------------------
+  ✅ chat_history                    5    2665ms    2824ms    3299ms    3299ms
+  ✅ uni_info                        5    2375ms    2399ms    2634ms    2634ms
+  ✅ curriculum                      3    2606ms    2546ms    2837ms    2837ms
+  ✅ time_table                      3    3245ms    2546ms    4952ms    4952ms
+  ❌ local_info                      3    3007ms    3214ms    3261ms    3261ms
+  ✅ student_manual                  3      75ms      74ms      81ms      81ms
+
+=================================================================
+  3. LATENCY BY STAGE  (all fixtures, ms)
+=================================================================
+  Stage           n     mean      p50      p95      p99
+  --------------------------------------------------
+  ✅ llm          19    2668ms    2452ms    4894ms    4894ms   target p50≤2500ms
+  ✅ total        22    2364ms    2545ms    3299ms    4952ms   target p50≤3000ms
+
+=================================================================
+  4. SUMMARY
+=================================================================
+  Fixtures run  : 22/22
+  TTFR p50      : 2545ms   ✅ target < 3000ms
+  TTFR p95      : 3299ms   ✅ target < 5000ms

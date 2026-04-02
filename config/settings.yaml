@@ -6,12 +6,17 @@ server:
   pi5_face_port: 7000
 
 llm:
-  provider: "ollama"
-  base_url: "http://localhost:11434"
-  model: "hf.co/mradermacher/llama3.1-typhoon2-70b-instruct-GGUF:Q5_K_M"
-  timeout: 30
+  provider: "vllm"
+  base_url: "http://localhost:8080/v1"
+  # HuggingFace model name — must match what vLLM is started with:
+  # python -m vllm.entrypoints.openai.api_server \
+  #   --model scb10x/llama3.1-typhoon2-70b-instruct \
+  #   --dtype bfloat16 --tensor-parallel-size 4 \
+  #   --max-model-len 4096 --port 8080
+  model: "scb10x/llama3.1-typhoon2-70b-instruct"
+  timeout: 60
   temperature: 0.65
-  max_tokens: 512
+  max_tokens: 150
   top_k: 30
   top_p: 0.85
   repeat_penalty: 1.05
@@ -19,11 +24,11 @@ llm:
 
 llm_fast:
   provider: "ollama"
-  base_url: "http://localhost:11434"
+  base_url: "http://localhost:11434/v1"
   model: "hf.co/mradermacher/llama3.1-typhoon2-8b-instruct-GGUF:Q5_K_M"
   timeout: 15
   temperature: 0.3
-  max_tokens: 256
+  max_tokens: 150
   top_k: 30
   top_p: 0.85
   repeat_penalty: 1.1
@@ -37,6 +42,9 @@ milvus:
   curriculum_collection: "curriculum"
   uni_info_collection: "uni_info"
   time_table_collection: "time_table"
+  # new RAG collections
+  local_info_collection: "local_info"        # bars.json + restaurents.json
+  student_manual_collection: "student_manual" # student_manual_2564.pdf
   embedding_model: "BAAI/bge-m3"
   embedding_dim: 1024
   top_k: 3
@@ -65,7 +73,7 @@ thresholds:
   stt_confidence: 0.6
 
 pi5_ros2:
-  host: "10.26.13.128"
+  host: "10.26.3.203"
   port: 8767
 
 sqlite:

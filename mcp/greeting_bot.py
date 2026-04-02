@@ -87,6 +87,7 @@ class GreetingBot:
         llm: TyphoonClient,
         memory_manager=None,
         pi5_base_url: str = "http://10.100.16.XX:5000",
+        pi5_ros2_base_url: str = "http://10.26.3.203:8767",
         tts_mode: str = "pi5",
         tts_engine: str = "khanomtan",   # "typhoon_audio" | "khanomtan"
         audio_sidecar_url: str = "http://localhost:8001",
@@ -95,6 +96,7 @@ class GreetingBot:
         self.llm = llm
         self.memory_manager = memory_manager
         self.pi5_base_url = pi5_base_url.rstrip("/")
+        self.pi5_ros2_base_url = pi5_ros2_base_url.rstrip("/")
         self.tts_mode = tts_mode
         self.tts_engine = tts_engine
         self.audio_sidecar_url = audio_sidecar_url
@@ -140,9 +142,8 @@ class GreetingBot:
         expanded = expand_for_tts(greeting_text)
         tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
 
-        # 3. Fire TTS + ROS2 stop — non-blocking, response returns immediately
+        # 3. Fire TTS — non-blocking, response returns immediately
         asyncio.create_task(self._send_tts(tts_text))
-        asyncio.create_task(self._send_navigation("stop_roaming"))
 
         # Return (original_text, tts_text) so caller can log the clean Thai
         return greeting_text, tts_text
@@ -165,7 +166,6 @@ class GreetingBot:
         tts_text = expanded if self.tts_engine == "typhoon_audio" else to_tts_ready(expanded)
 
         asyncio.create_task(self._send_tts(tts_text))
-        asyncio.create_task(self._send_navigation("stop_roaming"))
         return greeting_text
 
     # ------------------------------------------------------------------
@@ -189,14 +189,4 @@ class GreetingBot:
         except Exception as exc:
             logger.error("GreetingBot._send_tts failed: %r", exc)
 
-    async def _send_navigation(self, cmd: str, destination: Optional[str] = None) -> None:
-        """POST navigation command to PI 5 /navigation."""
-        url = f"{self.pi5_base_url}/navigation"
-        payload: dict = {"cmd": cmd}
-        if destination:
-            payload["destination"] = destination
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                await client.post(url, json=payload)
-        except Exception as exc:
-            logger.error("GreetingBot._send_navigation failed: %r", exc)
+

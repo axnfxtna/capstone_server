@@ -109,6 +109,10 @@ async def lifespan(app: FastAPI):
     # PI 5 base URL + TTS config
     srv = settings["server"]
     pi5_url = f"http://{srv['pi5_ip']}:{srv['pi5_port']}"
+    
+    ros2_cfg = settings.get("pi5_ros2", {})
+    pi5_ros2_url = f"http://{ros2_cfg.get('host', '10.26.3.203')}:{ros2_cfg.get('port', 8767)}"
+    
     tts_cfg = settings.get("tts", {})
     tts_mode   = tts_cfg.get("mode", "pi5")
     tts_engine = tts_cfg.get("engine", "khanomtan")
@@ -127,6 +131,7 @@ async def lifespan(app: FastAPI):
         llm=llm,
         memory_manager=memory_manager,
         pi5_base_url=pi5_url,
+        pi5_ros2_base_url=pi5_ros2_url,
         tts_mode=tts_mode,
         tts_engine=tts_engine,
         audio_sidecar_url=audio_sidecar_url,
@@ -141,6 +146,7 @@ async def lifespan(app: FastAPI):
     intent_router = IntentRouter(
         llm=llm,
         pi5_base_url=pi5_url,
+        pi5_ros2_base_url=pi5_ros2_url,
         tts_mode=tts_mode,
         tts_engine=tts_engine,
         audio_sidecar_url=audio_sidecar_url,

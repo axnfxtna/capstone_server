@@ -1,8 +1,11 @@
 """
 llm/typhoon_client.py
 =====================
-HTTP wrapper for Ollama-served LLM (Typhoon / Qwen2.5).
-Adapted from final_docker_component/src/utils_rag.py OllamaClient.
+HTTP wrapper for OpenAI-compatible LLM endpoints (vLLM / Ollama /v1).
+
+Both vLLM and Ollama expose an OpenAI-compatible API at /v1/chat/completions,
+so this client works with either backend — just point base_url at the right
+server in config/settings.yaml.
 
 Adds:
   - clean_cjk()  — strips Chinese/Japanese/Korean characters that leak from
@@ -130,28 +133,32 @@ def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:
     )
 # "- ถ้าคำถามอยู่นอกเหนือความสามารถ 3 อย่างข้างต้น ให้ตอบว่า \"น้องสาธุไม่มีข้อมูลเรื่องนั้นค่ะ
 # ═══════════════════════════════════════════════════════════════════════
-# Ollama HTTP client
+# OpenAI-compatible client (vLLM / Ollama /v1)
 # ═══════════════════════════════════════════════════════════════════════
 
 class TyphoonClient:
     """
-    Thin HTTP wrapper around Ollama's /api/generate and /api/chat endpoints.
-    Works with any model served via Ollama (Typhoon, Qwen2.5, Llama, etc.).
+    HTTP wrapper around any OpenAI-compatible /v1/chat/completions endpoint.
 
-    Adapted from final_docker_component/src/utils_rag.py OllamaClient.
+    Works with:
+      - vLLM  (recommended for 70B — set base_url to http://localhost:8000/v1)
+      - Ollama /v1 (for 8B fast model — set base_url to http://localhost:11434/v1)
+
+    vLLM accepts top_k and repetition_penalty as extensions to the OpenAI spec.
+    Ollama /v1 accepts top_k and ignores unknown params gracefully.
     """
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434",
-        model: str = "typhoon2-7b-instruct",
-        timeout: int = 30,
+        base_url: str = "http://localhost:8000/v1",
+        model: str = "scb10x/llama3.1-typhoon2-70b-instruct",
+        timeout: int = 60,
         temperature: float = 0.7,
-        max_tokens: int = 512,
+        max_tokens: int = 150,
         top_k: int = 30,
         top_p: float = 0.85,
         repeat_penalty: float = 1.15,
-        num_ctx: int = 4096,
+        num_ctx: int = 4096,  # kept for config compatibility; set at vLLM startup, not per-request
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -163,16 +170,38 @@ class TyphoonClient:
         self.repeat_penalty = repeat_penalty
         self.num_ctx = num_ctx
 
-    def _base_options(self, temperature: float, max_tokens: int) -> dict:
-        """Shared Ollama options dict used by all generation methods."""
-        return {
+    def _call(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        top_k: Optional[int] = None,
+        json_mode: bool = False,
+    ) -> Optional[str]:
+        """Core POST to /v1/chat/completions. Returns content string or None on error."""
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
             "temperature": temperature,
-            "num_predict": max_tokens,
-            "top_k": self.top_k,
+            "max_tokens": max_tokens,
             "top_p": self.top_p,
-            "repeat_penalty": self.repeat_penalty,
-            "num_ctx": self.num_ctx,
+            "top_k": top_k if top_k is not None else self.top_k,
+            "repetition_penalty": self.repeat_penalty,
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        try:
+            resp = requests.post(
+                f"{self.base_url}/chat/completions",
+                json=payload,
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            return clean_cjk(content)
+        except Exception as exc:
+            logger.error("TyphoonClient._call error: %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     def generate(
@@ -184,24 +213,11 @@ class TyphoonClient:
         """Single-turn prompt → response (no chat history)."""
         temperature = temperature if temperature is not None else self.temperature
         max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": self._base_options(temperature, max_tokens),
-        }
-        try:
-            resp = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            text = resp.json().get("response", "")
-            return clean_cjk(text)
-        except Exception as exc:
-            logger.error("TyphoonClient.generate error: %s", exc)
-            return "รบกวนพูดใหม่อีกครั้งได้มั้ยคะ"
+        result = self._call(
+            [{"role": "user", "content": prompt}],
+            temperature, max_tokens,
+        )
+        return result if result is not None else "รบกวนพูดใหม่อีกครั้งได้มั้ยคะ"
 
     # ------------------------------------------------------------------
     def chat(
@@ -216,24 +232,8 @@ class TyphoonClient:
         """
         temperature = temperature if temperature is not None else self.temperature
         max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "stream": False,
-            "options": self._base_options(temperature, max_tokens),
-        }
-        try:
-            resp = requests.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            content = resp.json().get("message", {}).get("content", "")
-            return clean_cjk(content)
-        except Exception as exc:
-            logger.error("TyphoonClient.chat error: %s", exc)
-            return "รบกวนพูดใหม่อีกทีได้มั้ยคะ"
+        result = self._call(messages, temperature, max_tokens)
+        return result if result is not None else "รบกวนพูดใหม่อีกทีได้มั้ยคะ"
 
     # ------------------------------------------------------------------
     def generate_structured(
@@ -244,30 +244,23 @@ class TyphoonClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Call LLM and parse JSON from the response.
-        Uses Ollama format=json to force valid JSON output.
+        Uses response_format=json_object to enforce valid JSON output.
         Handles responses wrapped in ```json ... ``` markdown blocks.
         Returns None if parsing fails.
         """
         temperature = temperature if temperature is not None else max(self.temperature - 0.4, 0.1)
         max_tokens  = max_tokens  if max_tokens  is not None else self.max_tokens
-        # Use tighter top_k for JSON generation to reduce hallucinated keys
-        opts = self._base_options(temperature, max_tokens)
-        opts["top_k"] = min(self.top_k, 20)
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "format": "json",
-            "options": opts,
-        }
+        # Tighter top_k for JSON generation to reduce hallucinated keys
+        top_k = min(self.top_k, 20)
         try:
-            resp = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout,
+            raw = self._call(
+                [{"role": "user", "content": prompt}],
+                temperature, max_tokens,
+                top_k=top_k,
+                json_mode=True,
             )
-            resp.raise_for_status()
-            raw = clean_cjk(resp.json().get("response", ""))
+            if raw is None:
+                return None
         except Exception as exc:
             logger.error("TyphoonClient.generate_structured error: %s", exc)
             return None
@@ -296,7 +289,9 @@ class TyphoonClient:
         max_tokens: int = 512,
     ) -> Optional[Dict[str, Any]]:
         """chat() variant that parses JSON from the response."""
-        raw = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        raw = self._call(messages, temperature, max_tokens, json_mode=True)
+        if raw is None:
+            return None
         raw = re.sub(r"```json\s*", "", raw)
         raw = re.sub(r"```\s*", "", raw)
         match = re.search(r"\{.*\}", raw, re.DOTALL)

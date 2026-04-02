@@ -239,6 +239,11 @@ async def on_greeting(payload: GreetingPayload, request: Request):
         _last_greeting["__stranger__"] = datetime.utcnow()
         _active = 1
         greeting_text = await app_state.greeting_bot.greet_stranger()
+        
+        ros2_cfg = app_state.settings.get("pi5_ros2", {})
+        ros2_url = f"http://{ros2_cfg.get('host', 'TBD')}:{ros2_cfg.get('port', 8767)}"
+        asyncio.create_task(_push_nav_state(0, ros2_url))
+        
         logger.info("Stranger greeted: %r", greeting_text[:60])
         log_event({
             "endpoint": "/greeting",
@@ -539,8 +544,8 @@ async def on_detection(payload: DetectionPayload, request: Request):
     elif intent == "farewell":
         asyncio.create_task(_push_nav_state(1, ros2_url))
 
-    # Student-gone timer — reset on every turn, cancel on farewell
-    if intent == "farewell":
+    # Student-gone timer — reset on every turn, cancel on farewell AND navigate
+    if intent in ("farewell", "navigate"):
         _cancel_gone_timer(sess)
     else:
         _reset_gone_timer(

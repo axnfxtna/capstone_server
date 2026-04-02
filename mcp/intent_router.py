@@ -29,6 +29,7 @@ class IntentRouter:
         self,
         llm: TyphoonClient,
         pi5_base_url: str = "http://10.100.16.XX:5000",
+        pi5_ros2_base_url: str = "http://10.26.3.203:8767",
         tts_mode: str = "pi5",
         tts_engine: str = "khanomtan",   # "typhoon_audio" | "khanomtan"
         audio_sidecar_url: str = "http://localhost:8001",
@@ -36,6 +37,7 @@ class IntentRouter:
     ):
         self.llm = llm
         self.pi5_base_url = pi5_base_url.rstrip("/")
+        self.pi5_ros2_base_url = pi5_ros2_base_url.rstrip("/")
         self.tts_mode = tts_mode
         self.tts_engine = tts_engine
         self.audio_sidecar_url = audio_sidecar_url
@@ -62,12 +64,10 @@ class IntentRouter:
 
         elif intent == "farewell":
             asyncio.create_task(self._speak(tts_text))
-            asyncio.create_task(self._navigate("resume_roaming"))
             routed_to.extend(["tts", "ros2_resume"])
 
         elif intent == "navigate":
             asyncio.create_task(self._speak(tts_text))
-            asyncio.create_task(self._navigate("go_to", destination=destination))
             routed_to.extend(["tts", "ros2_navigate"])
 
         return {"routed_to": routed_to, "status": "ok"}
@@ -91,14 +91,4 @@ class IntentRouter:
         except Exception as exc:
             logger.error("IntentRouter._speak failed: %s", exc)
 
-    async def _navigate(self, cmd: str, destination: Optional[str] = None) -> None:
-        """POST navigation command to PI 5."""
-        url = f"{self.pi5_base_url}/navigation"
-        payload: Dict = {"cmd": cmd}
-        if destination:
-            payload["destination"] = destination
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                await client.post(url, json=payload)
-        except Exception as exc:
-            logger.error("IntentRouter._navigate failed (cmd=%s): %s", cmd, exc)
+

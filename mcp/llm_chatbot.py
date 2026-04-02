@@ -14,9 +14,11 @@ Flow per turn:
   7. Return ChatbotResponse
 
 Dataset collections searched (from final_docker_component):
-  - curriculum   → questions about courses, credits, subject names
-  - time_table   → schedule, exam timetable questions
-  - uni_info     → campus location, building, facilities (default)
+  - curriculum      → questions about courses, credits, subject names
+  - time_table      → schedule, exam timetable questions
+  - local_info      → nearby bars and restaurants (bars.json, restaurents.json)
+  - student_manual  → student handbook rules and procedures (student_manual_2564.pdf)
+  - uni_info        → campus location, building, facilities (default)
 """
 
 import asyncio
@@ -37,31 +39,37 @@ logger = logging.getLogger(__name__)
 # Query routing — adapted from utils_rag.py route_query()
 # ═══════════════════════════════════════════════════════════════════════
 
-# Routing priority: chat_history → mysql_students → time_table → curriculum → default
+# Routing priority: chat_history → student_manual → mysql_students → time_table → curriculum → default
+# student_manual must come before mysql_students because "นักศึกษา" in mysql_students
+# would otherwise swallow regulation/handbook questions.
 # time_table must come before curriculum because "เรียน" appears in both.
 _ROUTE_KEYWORDS: Dict[str, List[str]] = {
     "chat_history": [
         # Explicit memory references
         "ครั้งที่แล้ว", "เมื่อกี้", "ก่อนหน้า", "ถามอะไร",
-        "คุยอะไร", "ประวัติ", "history", "previous",
-        # Identity / intro — robot should answer from its own context
-        "คุณคือ", "แนะนำตัว", "ชื่ออะไร", "คือใคร", "คุณเป็น",
-        "ทำอะไร", "ทำอะไรได้",
-        # Conversational / emotional / greetings
-        "สวัสดี", "หวัดดี", "ยินดี", "ดีใจ", "เป็นยังไง",
-        "สบายดี", "เป็นไง", "โอเค", "โอ้เค", "ขอบคุณ", "ขอบใจ",
-        "มู้ด", "รู้สึก", "อารมณ์",
+        "คุยอะไร", "ประวัติ",
+    ],
+    "student_manual": [
+        # Student handbook vocabulary
+        "คู่มือ", "คู่มือนักศึกษา", "ระเบียบ", "กฎระเบียบ", "ข้อบังคับ",
+        "วินัย", "สิทธินักศึกษา", "หน้าที่นักศึกษา",
+        # Academic procedures
+        "ลาพัก", "ลาพักการศึกษา", "ถอนวิชา", "ถอนรายวิชา",
+        "ผ่อนผัน", "ขอผ่อนผัน", "ลงทะเบียนช้า",
+        # Financial aid
+        "ทุนการศึกษา", "กองทุน", "กยศ", "กรอ",
+        # Dress code / discipline
+        "แต่งกาย", "ชุดนักศึกษา", "โทษ", "การลงโทษ", "พักการเรียน",
     ],
     "mysql_students": [
         "นักศึกษา", "อีเมล", "รหัสนักศึกษา",
         "สมาชิก", "ใครบ้าง", "คนไหน", "รุ่น",
-        "student", "email",
+        "เมล",
     ],
     "time_table": [
         "ตารางเรียน", "ตารางสอบ", "ตาราง",
         "เวลาเรียน", "คาบเรียน", "วันเรียน",
-        "วันไหน", "เวลาไหน", "กี่โมง",
-        "exam", "schedule", "class", "สอบ", "timetable",
+        "วันไหน", "เวลาไหน", "กี่โมง", "สอบ",
         "พรุ่งนี้", "วันพรุ่งนี้",
         # Thai day names — "วันจันทร์มีวิชาอะไร" should route here, not curriculum
         "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัส", "วันพฤหัสบดี",
@@ -70,6 +78,17 @@ _ROUTE_KEYWORDS: Dict[str, List[str]] = {
     "curriculum": [
         "วิชา", "หลักสูตร", "หน่วยกิต", "รายวิชา", "คอร์ส", "เนื้อหา",
         "เรียน", "course", "credit", "subject", "curriculum",
+    ],
+    "local_info": [
+        # Restaurants
+        "ร้านอาหาร", "ร้านข้าว", "กินข้าว", "อาหารอร่อย", "แนะนำร้าน",
+        "ร้านไหนอร่อย", "ร้านอยู่ไหน", "เมนูแนะนำ", "ราคาอาหาร",
+        "must try", "อยากกิน", "ร้านอยู่แถว",
+        # Bars / nightlife
+        "ร้านบาร์", "บาร์", "ดื่ม", "เหล้า", "เบียร์", "ไนท์",
+        "เที่ยวกลางคืน", "ปาร์ตี้", "bar",
+        # Location context
+         "ลาดกระบัง 42", "แถวมหาลัย", "ใกล้มหาลัย",
     ],
     "uni_info": [
         # Location questions
