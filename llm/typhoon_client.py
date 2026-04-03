@@ -98,12 +98,14 @@ _THAI_MONTHS = {
 
 def _current_datetime_str() -> str:
     from datetime import datetime, timezone, timedelta
+    from mcp.tts_router import thai_time_str
     tz_thai = timezone(timedelta(hours=7))
     now = datetime.now(tz_thai)
     day_th = _THAI_DAYS[now.weekday()]
     month_th = _THAI_MONTHS[now.month]
     year_be = now.year + 543          # Buddhist Era (พ.ศ.)
-    return f"วัน{day_th}ที่ {now.day} {month_th} พ.ศ. {year_be} เวลา {now.strftime('%H:%M')} น."
+    time_th = thai_time_str(now.hour, now.minute)
+    return f"วัน{day_th}ที่ {now.day} {month_th} พ.ศ. {year_be} เวลา{time_th}"
 
 
 def build_chatbot_system_prompt(student_name: str, student_year: int) -> str:

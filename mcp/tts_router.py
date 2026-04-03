@@ -67,29 +67,128 @@ _ENG_WORD = {
 # Regex to split a token into letter-runs and digit-runs
 _ALNUM_SPLIT = re.compile(r'[A-Za-z]+|\d+')
 
-# Thai word substitutions for known mispronunciations
-# Applied before syllabification — longer matches first
+# Thai word substitutions for known mispronunciations and abbreviations.
+# Applied before syllabification — longer matches first.
 _THAI_SUBSTITUTION = {
     'น้องสาธุ': 'น้อง สา ทุ',
     'สาธุ':     'สา ทุ',
+    'พ.ศ.':     'ปี',     # "พ.ศ." dots break TTS prosody — replace with spoken form
+    'ค.ศ.':     'ปี',
 }
 
 
-_DIGIT_THAI = {'0': 'ศูนย์', '1': 'หนึ่ง', '2': 'สอง', '3': 'สาม',
-               '4': 'สี่', '5': 'ห้า', '6': 'หก', '7': 'เจ็ด',
-               '8': 'แปด', '9': 'เก้า'}
+_ONES = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
+_PLACES = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน']
+
+# Thai words — used for digit-by-digit (room/building codes)
+_DIGIT_THAI = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
+
+
+def _int_to_thai_words(n: int) -> str:
+    """
+    Pure-Python Thai number → words. No external dependencies.
+
+    Rules:
+      - tens digit = 1  → สิบ   (not หนึ่งสิบ)
+      - tens digit = 2  → ยี่สิบ (not สองสิบ)
+      - units digit = 1, and tens digit ≠ 0 → เอ็ด (not หนึ่ง)
+      - millions handled recursively
+    """
+    if n == 0:
+        return 'ศูนย์'
+    if n < 0:
+        return 'ลบ' + _int_to_thai_words(-n)
+    if n >= 1_000_000:
+        hi = n // 1_000_000
+        lo = n % 1_000_000
+        return _int_to_thai_words(hi) + 'ล้าน' + (_int_to_thai_words(lo) if lo else '')
+
+    digits = []
+    tmp = n
+    while tmp:
+        digits.append(tmp % 10)
+        tmp //= 10
+    digits.reverse()           # most-significant first
+    length = len(digits)
+
+    result = ''
+    for i, d in enumerate(digits):
+        place = length - 1 - i   # 0=units, 1=tens, 2=hundreds, …
+        if d == 0:
+            continue
+        if place == 1:
+            if d == 1:
+                result += 'สิบ'    # 10, 11…19 → just สิบ, no หนึ่ง
+            elif d == 2:
+                result += 'ยี่สิบ'  # 20…29
+            else:
+                result += _ONES[d] + 'สิบ'
+        elif place == 0 and d == 1 and length > 1 and digits[i - 1] != 0:
+            # units=1, there IS a non-zero tens digit → เอ็ด
+            result += 'เอ็ด'
+        else:
+            result += _ONES[d] + (_PLACES[place] if place > 0 else '')
+    return result
+
+
+def thai_time_str(hour: int, minute: int) -> str:
+    """Convert hour/minute to colloquial spoken Thai time.
+
+    Uses the 6-period informal system (ตี / โมงเช้า / เที่ยง / บ่าย / เย็น / ทุ่ม)
+    rather than the formal 24-hour นาฬิกา system, matching natural Thai speech.
+
+    Period mapping:
+      00:00          → เที่ยงคืน
+      01:00 - 05:59  → ตี{1-5}
+      06:00 - 11:59  → {6-11}โมงเช้า
+      12:00 - 12:59  → เที่ยง
+      13:00          → บ่ายโมง
+      14:00 - 15:59  → บ่าย{2-3}โมง
+      16:00 - 18:59  → {4-6}โมงเย็น
+      19:00 - 23:59  → {1-5}ทุ่ม
+    """
+    mn_str = f"{_int_to_thai_words(minute)}นาที" if minute > 0 else ""
+
+    if hour == 0:
+        base = "เที่ยงคืน"
+    elif 1 <= hour <= 5:
+        base = f"ตี{_int_to_thai_words(hour)}"
+    elif 6 <= hour <= 11:
+        base = f"{_int_to_thai_words(hour)}โมงเช้า"
+    elif hour == 12:
+        base = "เที่ยง"
+    elif hour == 13:
+        base = "บ่ายโมง"
+    elif 14 <= hour <= 15:
+        base = f"บ่าย{_int_to_thai_words(hour - 12)}โมง"
+    elif 16 <= hour <= 18:
+        base = f"{_int_to_thai_words(hour - 12)}โมงเย็น"
+    else:  # 19-23
+        base = f"{_int_to_thai_words(hour - 18)}ทุ่ม"
+
+    return f"{base} {mn_str}".strip()
+
+
+def _normalize_time(text: str) -> str:
+    """Replace HH:MM / H:MM patterns with spoken Thai time words."""
+    def _replace(m: re.Match) -> str:
+        h, mn = int(m.group(1)), int(m.group(2))
+        if 0 <= h <= 23 and 0 <= mn <= 59:
+            return thai_time_str(h, mn)
+        return m.group()   # out-of-range — leave untouched
+    return re.sub(r'\b(\d{1,2}):(\d{2})\b', _replace, text)
 
 
 def _num_to_thai(n: int) -> str:
-    # 4-digit numbers are room/building codes — read digit by digit
+    """Convert an integer to Thai words for TTS.
+
+    4-digit non-year numbers are read digit-by-digit (room/building codes).
+    All others are converted to full Thai words.
+    """
     s = str(n)
-    if len(s) == 4:
-        return ' '.join(_DIGIT_THAI[d] for d in s)
-    try:
-        from pythainlp.util import num_to_thaiword
-        return num_to_thaiword(n)
-    except Exception:
-        return s
+    if len(s) == 4 and not (2400 <= n <= 2600):
+        return ' '.join(_DIGIT_THAI[int(d)] for d in s)
+    return _int_to_thai_words(n)
 
 
 def _expand_token(token: str) -> str:
@@ -137,6 +236,13 @@ def expand_for_tts(text: str) -> str:
     """
     if not text or not text.strip():
         return text
+
+    # Apply substitutions (abbreviations, known mispronunciations) before chunking
+    for word, replacement in _THAI_SUBSTITUTION.items():
+        text = text.replace(word, replacement)
+
+    # Normalize HH:MM time patterns before digit expansion
+    text = _normalize_time(text)
 
     _chunk_re = re.compile(rf"[{_THAI_RANGE}]+|[^\s{_THAI_RANGE}]+|\s+")
     parts: List[str] = []
